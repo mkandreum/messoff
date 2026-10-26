@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  /// Cambiarlo invalida todas las sesiones existentes
+  tokenVersion Int      @default(0)
+  theme        String   @default("paper")
+  haptics      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events        Event[]
+  tasks         Task[]
+  focusSessions FocusSession[]
+}
+
+model Event {
+  id       String @id @default(uuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title    String
+  /// YYYY-MM-DD, sin zona horaria para no desplazar el día
+  date     String
+  /// Minutos desde medianoche
+  start    Int
+  duration Int
+  category String @default("trabajo")
+  location String @default("")
+  note     String @default("")
+  attendees String[] @default([])
+
+  checklist ChecklistItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([userId, updatedAt])
+}
+
+model ChecklistItem {
+  id       String  @id @default(uuid())
+  eventId  String
+  event    Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  text     String
+  done     Boolean @default(false)
+  position Int     @default(0)
+
+  @@index([eventId])
+}
+
+model Task {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  /// YYYY-MM-DD o null
+  due       String?
+  tag       String   @default("personal")
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, done])
+  @@index([userId, due])
+}
+
+model FocusSession {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  minutes     Int
+  completedAt DateTime @default(now())
+
+  @@index([userId, completedAt])
+}
