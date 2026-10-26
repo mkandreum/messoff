@@ -1,0 +1,10 @@
+# Solo para probar en tu máquina. En Coolify NO uses este archivo:
+# el proxy de Coolify entra al contenedor por la red interna.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#
+# Luego abre http://localhost:3000.
+services:
+  app:
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"

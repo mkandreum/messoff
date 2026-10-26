@@ -25,8 +25,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "${APP_PORT:-3000}:3000"
+    # Coolify/Traefik entra por la red interna. No publicamos el 3000 en el host:
+    # ese puerto suele estar ocupado por el propio panel u otra app.
+    expose:
+      - "3000"
     environment:
       NODE_ENV: production
       PORT: 3000

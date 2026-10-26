@@ -95,14 +95,16 @@ cp .env.example .env
 #   POSTGRES_PASSWORD=algo-largo
 #   APP_ORIGIN_PUBLIC=http://localhost:3000
 #   COOKIE_SECURE_PUBLIC=false
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
 Abre `http://localhost:3000` y crea una cuenta. El calendario llega con datos de ejemplo.
 
-- Logs: `docker compose logs -f app`
-- Parar: `docker compose down`
-- Borrar también la base de datos: `docker compose down -v`
+El `docker-compose.yml` base **no publica el puerto en el host**: está pensado para Coolify/Traefik, que entra por la red interna al puerto `3000`. El archivo `docker-compose.local.yml` añade el mapeo `127.0.0.1:3000` solo para tu máquina.
+
+- Logs: `docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f app`
+- Parar: `docker compose -f docker-compose.yml -f docker-compose.local.yml down`
+- Borrar también la base de datos: `docker compose -f docker-compose.yml -f docker-compose.local.yml down -v`
 - Salud: `http://localhost:3000/api/health`
 
 ### Desarrollo con Vite, API aparte
@@ -147,7 +149,7 @@ Las pruebas de API cubren registro, sesión, CSRF, CRUD de eventos, duplicado, p
 | `COOKIE_SECURE_PUBLIC` | Marca la cookie como Secure | `true` en producción con HTTPS. |
 | `SEED_DEMO` | Datos de ejemplo al registrarse | `true` por defecto. |
 | `TZ` | Zona horaria del servidor | `Europe/Madrid` por defecto. |
-| `APP_PORT` | Puerto publicado por Compose | `3000` por defecto. |
+| `APP_PORT` | Puerto del mapeo local (`docker-compose.local.yml`) | `3000`; no se usa en Coolify. |
 | `PORT` | Puerto interno de la API | `3000` en Docker, `3001` en desarrollo. |
 
 En desarrollo, el `.env.example` trae `APP_ORIGIN=http://localhost:5180`, `PORT=3001` y `COOKIE_SECURE=false`.
@@ -179,8 +181,9 @@ No hay webhook, ni secreto de Coolify, ni push a un registro. El despliegue es u
    TZ=Europe/Madrid
    ```
    Si usas la base de datos del compose, añade también `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB`.
-4. Añade el dominio y activa HTTPS.
-5. Despliega desde Coolify cuando quieras. Si activas el auto-deploy de Coolify para este repo, será Coolify quien lo dispare, no GitHub Actions.
+4. **No publiques el puerto 3000 en el host.** El compose base usa `expose: 3000`; Coolify/Traefik entra por la red interna. Si Coolify te pide el puerto del contenedor, es `3000`; no añadas un `ports: 3000:3000` (fue lo que chocó con el puerto ya ocupado de tu servidor).
+5. Añade el dominio en Coolify apuntando al puerto `3000` y activa HTTPS.
+6. Despliega desde Coolify cuando quieras. Si activas el auto-deploy de Coolify para este repo, será Coolify quien lo dispare, no GitHub Actions.
 
 También puedes desplegar en un VPS:
 
@@ -188,7 +191,8 @@ También puedes desplegar en un VPS:
 git clone https://github.com/mkandreum/messoff.git
 cd messoff
 cp .env.example .env   # edita los secretos, APP_ORIGIN_PUBLIC y COOKIE_SECURE_PUBLIC
-docker compose up -d --build
+# Publica solo en 127.0.0.1:3000 para que Caddy/Nginx haga de proxy.
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
 Pon Caddy/Nginx/Traefik delante para HTTPS. No incluyo backups automáticos: configura una copia de `pulso_pgdata` o `pg_dump` en tu proveedor.
