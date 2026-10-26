@@ -1,6 +1,6 @@
 # Pulso
 
-**Agenda personal editorial, ahora de verdad.** Cuentas con contraseña, datos por usuario en PostgreSQL, drag & drop con hápticas y despliegue en Docker con imagen en GHCR.
+**Agenda personal editorial, ahora de verdad.** Cuentas con contraseña, datos por usuario en PostgreSQL, drag & drop con hápticas y todo empaquetado en Docker. **Este repositorio no despliega nada**: tú decides cuándo y dónde con tu Coolify.
 
 [![CI](https://github.com/mkandreum/messoff/actions/workflows/ci.yml/badge.svg)](https://github.com/mkandreum/messoff/actions/workflows/ci.yml)
 ![React](https://img.shields.io/badge/React-18-1b1914)
@@ -77,7 +77,7 @@ También hay capturas de [enfoque](preview/enfoque-escritorio.png), [detalle mó
 | API | Node 22, Express 4, Zod, Helmet, rate limit |
 | Datos | PostgreSQL 16 + Prisma 6 |
 | Auth | bcryptjs, JWT HS256, cookie HttpOnly, CSRF por cabecera |
-| Entrega | Docker multi-stage, Docker Compose, GHCR, GitHub Actions, Coolify |
+| Entrega | Docker multi-stage, Docker Compose, GitHub Actions (solo CI) |
 | Diseño | CSS propio con tokens, Instrument Serif + Instrument Sans |
 
 No hay Tailwind ni una librería de componentes: el sistema visual vive en `src/styles.css` y sigue el lenguaje de **shadcn/ui** (el sistema de componentes con más estrellas de GitHub) y los patrones de accesibilidad de Radix. Las animaciones son de **Motion** y la vibración de **web-haptics**.
@@ -154,25 +154,22 @@ En desarrollo, el `.env.example` trae `APP_ORIGIN=http://localhost:5180`, `PORT=
 
 ---
 
-## Despliegue automático
+## Despliegue (lo haces tú)
 
-El workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) hace tres cosas:
+El workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) **no despliega nada y no publica imágenes**. Solo comprueba que el proyecto está sano:
 
 1. **Web**: instala, comprueba tipos, construye el frontend y audita dependencias de producción.
 2. **API**: levanta PostgreSQL 16, aplica migraciones, ejecuta las pruebas y compila el servidor.
-3. **Imagen**: construye la imagen Docker. En cada push a `main` la publica en:
-   ```
-   ghcr.io/mkandreum/messoff:latest
-   ghcr.io/mkandreum/messoff:<sha>
-   ```
-   y, si existen los secretos, avisa a Coolify.
+3. **Docker**: construye la imagen localmente (`pulso:ci`) y la descarta al terminar.
+
+No hay webhook, ni secreto de Coolify, ni push a un registro. El despliegue es una decisión tuya.
 
 ### Coolify
 
-1. Crea un recurso nuevo:
-   - **Docker Image** apuntando a `ghcr.io/mkandreum/messoff:latest`, o
-   - **GitHub repository** + Dockerfile/Compose.
-2. Si usas Postgres gestionado, define `DATABASE_URL` y no necesitas el servicio `db`. Si usas el `docker-compose.yml`, Coolify levanta `db` y `app` juntos.
+1. Crea un recurso nuevo desde este repositorio:
+   - **GitHub repository** + Dockerfile, o
+   - **Docker Compose** usando `docker-compose.yml`.
+2. Si usas Postgres gestionado, define `DATABASE_URL`. Si usas el `docker-compose.yml`, Coolify levanta `db` y `app` juntos.
 3. Configura las variables:
    ```
    JWT_SECRET=<64 caracteres>
@@ -183,14 +180,9 @@ El workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) hace tres cos
    ```
    Si usas la base de datos del compose, añade también `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB`.
 4. Añade el dominio y activa HTTPS.
-5. En GitHub → Settings → Secrets and variables → Actions, añade:
-   - `COOLIFY_WEBHOOK`: URL del webhook del recurso.
-   - `COOLIFY_TOKEN`: token de API de Coolify (opcional si el webhook ya lleva secreto).
-6. Haz push a `main`. CI valida, publica la imagen y dispara el despliegue.
+5. Despliega desde Coolify cuando quieras. Si activas el auto-deploy de Coolify para este repo, será Coolify quien lo dispare, no GitHub Actions.
 
-La imagen de GHCR puede nacer privada aunque el repositorio sea público. O la haces pública en el paquete de GitHub, o añades credenciales de registro en Coolify.
-
-También puedes desplegar en un VPS sin Coolify:
+También puedes desplegar en un VPS:
 
 ```bash
 git clone https://github.com/mkandreum/messoff.git

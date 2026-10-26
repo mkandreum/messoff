@@ -11,7 +11,7 @@ RUN npm ci --no-audit --no-fund
 
 FROM deps AS builder
 COPY . .
-RUN npm run build && npm prune --omit=dev
+RUN npm run build && npm prune --omit=dev && npx prisma generate
 
 FROM node:22-slim AS runner
 WORKDIR /app

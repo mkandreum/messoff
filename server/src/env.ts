@@ -18,7 +18,9 @@ if (!providedSecret && isProd) {
 
 const devSecret = crypto.createHash('sha256').update('pulso-dev-only-secret').digest('base64')
 
-const appOrigin = (process.env.APP_ORIGIN || '').replace(/\/$/, '')
+const appOrigin = (process.env.APP_ORIGIN || process.env.APP_ORIGIN_PUBLIC || '').replace(/\/$/, '')
+const secureFlag =
+  process.env.COOKIE_SECURE === 'true' || process.env.COOKIE_SECURE_PUBLIC === 'true'
 
 export const config = {
   isProd,
@@ -27,9 +29,7 @@ export const config = {
   jwtSecret: providedSecret || devSecret,
   appOrigin,
   cookieName: 'pulso_session',
-  cookieSecure:
-    process.env.COOKIE_SECURE === 'true' ||
-    (isProd && appOrigin.startsWith('https://')),
+  cookieSecure: secureFlag || (isProd && appOrigin.startsWith('https://')),
   sessionDays: 60,
   trustProxy: process.env.TRUST_PROXY !== 'false',
   seedDemo: process.env.SEED_DEMO !== 'false',
