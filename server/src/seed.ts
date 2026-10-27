@@ -41,6 +41,7 @@ type DemoEvent = {
 export async function seedWorkspace(tx: Prisma.TransactionClient, userId: string) {
   const base = today()
 
+  // Solo dos eventos de guía: el resto del calendario empieza vacío.
   const events: DemoEvent[] = [
     {
       title: 'Bienvenido a MessOff',
@@ -56,64 +57,18 @@ export async function seedWorkspace(tx: Prisma.TransactionClient, userId: string
       ],
     },
     {
-      title: 'Comida',
-      date: base,
-      start: 12 * 60 + 30,
-      duration: 90,
-      category: 'social',
-      location: 'La Huerta',
-    },
-    {
-      title: 'Bloque de foco',
+      title: 'Cómo usar MessOff',
       date: addDays(base, 1),
       start: 10 * 60,
-      duration: 120,
-      category: 'trabajo',
-      location: 'Modo foco',
-      note: 'Sin notificaciones. Una sola cosa importante.',
-    },
-    {
-      title: 'Yoga',
-      date: addDays(base, 2),
-      start: 17 * 60,
-      duration: 60,
-      category: 'salud',
-      location: 'Centro Aurora',
-    },
-    {
-      title: 'Comida de equipo',
-      date: addDays(base, 3),
-      start: 13 * 60 + 30,
-      duration: 90,
-      category: 'trabajo',
-      location: 'El Patio',
-      attendees: ['Marta', 'Iván'],
-    },
-    {
-      title: 'Planificación semanal',
-      date: addDays(base, 4),
-      start: 9 * 60,
-      duration: 45,
-      category: 'trabajo',
-      location: 'Modo foco',
-      note: 'Elige tres prioridades y protege dos huecos.',
-    },
-    {
-      title: 'Mercado',
-      date: addDays(base, 5),
-      start: 11 * 60,
-      duration: 120,
-      category: 'personal',
-      location: 'Plaza del Pilar',
-      note: 'Fruta, pan, flores. Sin prisa.',
-    },
-    {
-      title: 'Reset semanal',
-      date: addDays(base, 6),
-      start: 19 * 60,
       duration: 45,
       category: 'personal',
-      note: 'Revisa la semana y elige el lunes.',
+      location: 'Guía rápida',
+      note: 'Toca un hueco del calendario para crear un evento. Mantén pulsado un evento para moverlo. Desliza una tarea a la derecha para completarla. Crea un equipo para compartir calendario.',
+      checklist: [
+        { text: 'Escribir un evento en lenguaje natural (“Café con Lucía mañana 09:30”)', done: false },
+        { text: 'Cambiar de vista: Día, Semana, Agenda o Mes', done: false },
+        { text: 'Crear un equipo e invitar a alguien', done: false },
+      ],
     },
   ]
 

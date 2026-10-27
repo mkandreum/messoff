@@ -54,7 +54,11 @@ test('registro, sesión y datos de bienvenida', async () => {
 
   const bootstrap = await agent.get('/api/bootstrap')
   assert.equal(bootstrap.status, 200)
-  assert.ok(bootstrap.body.events.length >= 5)
+  assert.equal(bootstrap.body.events.length, 2)
+  assert.deepEqual(
+    bootstrap.body.events.map((e: { title: string }) => e.title).sort(),
+    ["Bienvenido a MessOff", "Cómo usar MessOff"],
+  )
   assert.equal(bootstrap.body.tasks.length, 3)
 })
 
