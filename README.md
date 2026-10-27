@@ -48,6 +48,17 @@ También hay capturas de [enfoque](preview/enfoque-escritorio.png), [detalle mó
 - Tarjetas densas según duración; los eventos solapados se apilan para seguir siendo legibles.
 - Crear tocando un hueco del calendario.
 
+### Equipos y calendarios compartidos
+- Crea **equipos** (con color) y comparte un calendario: los eventos de un equipo los ven y editan todos sus miembros.
+- **Invita por email a personas con y sin cuenta**: si todavía no se han registrado, la invitación espera y la verán al crear la cuenta con ese email (la aceptan ellas).
+- **Enlace o código para unirse** (`/?join=CODIGO`): quien lo abre sin cuenta llega al registro y, al entrar, se une solo. Quien administra puede renovarlo.
+- Quien creó el equipo lo administra (nombre, color, invitar, quitar personas, eliminarlo). Cualquiera puede salir; lo que creó vuelve a su calendario personal.
+- Chips de calendarios para mostrar u ocultar «Mío» y cada equipo; selector de calendario al crear o editar un evento; marca de equipo en las tarjetas.
+- Con equipos, la app se sincroniza sola cada 30 s.
+
+### Vistas del calendario
+Día, Semana, **Agenda** (lista por días con «ahora», días pasados plegados y días libres compactos; por defecto en móvil) y Mes. La elección se recuerda.
+
 ### Detalle del evento
 - Hoja flotante con animación compartida (no ocupa toda la pantalla).
 - Título, fecha, hora, duración, categoría, lugar, personas, subtareas con progreso y notas.
@@ -220,7 +231,8 @@ El rate limit es en memoria, suficiente para una instancia. Si escalas a varias 
 ```
 User ──< Event ──< ChecklistItem
   ├──< Task
-  └──< FocusSession
+  ├──< FocusSession
+  └──< TeamMember >── Team ──< TeamInvite   (Event.teamId → Team)
 ```
 
 - `Event.date`: `YYYY-MM-DD` como texto para no desplazar el día por zonas horarias.
@@ -244,6 +256,12 @@ GET    /api/tasks                POST /api/tasks
 PATCH  /api/tasks/:id            DELETE /api/tasks/:id
 POST   /api/tasks/:id/schedule
 GET    /api/focus-sessions       POST /api/focus-sessions
+GET    /api/teams                POST /api/teams
+PATCH  /api/teams/:id            DELETE /api/teams/:id
+POST   /api/teams/:id/invites    DELETE /api/teams/:id/invites/:inviteId
+POST   /api/teams/:id/code       POST /api/teams/join
+POST   /api/teams/invitations/:id/accept|decline
+DELETE /api/teams/:id/members/:userId
 GET    /api/health
 ```
 
