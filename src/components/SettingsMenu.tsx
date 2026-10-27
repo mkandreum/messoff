@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import {
   Check,
   KeyRound,
@@ -142,7 +142,7 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
       {open && (
         <>
           <div className="settings__scrim" onClick={onClose} aria-hidden="true" />
-          <motion.div
+          <m.div
             className="settings"
             ref={panel}
             role="dialog"
@@ -426,7 +426,7 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
               Pulso · Postgres · v1.0
               <span className="settings__version">/api</span>
             </footer>
-          </motion.div>
+          </m.div>
         </>
       )}
     </AnimatePresence>

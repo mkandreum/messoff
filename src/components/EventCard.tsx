@@ -1,4 +1,4 @@
-import { motion } from 'motion/react'
+import { m } from 'motion/react'
 import { MapPin } from 'lucide-react'
 import type { CalEvent } from '../types'
 import { fmtTime } from '../lib/date'
@@ -34,7 +34,7 @@ export function EventCard({
       ? `${Math.floor(event.duration / 60)} h${event.duration % 60 ? ` ${event.duration % 60}` : ''}`
       : `${event.duration} min`
   return (
-    <motion.button
+    <m.button
       type="button"
       layoutId={`ev-${event.id}`}
       layout
@@ -45,7 +45,7 @@ export function EventCard({
       } ${!showMeta ? 'event--dense' : ''} ${showNote ? 'event--hasnote' : ''} ${
         origin ? 'is-origin' : ''
       } ${stacked ? 'event--stacked' : ''}`}
-      style={{ top: `${topPct(event.start)}%`, height: `calc(${heightPct(event.duration)}% - 5px)` }}
+      style={{ top: `${topPct(event.start)}%`, height: `calc(${heightPct(event.duration, event.start)}% - 5px)` }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -102,6 +102,6 @@ export function EventCard({
         </>
       )}
       <span className="sr-only">. Mantén pulsado para mover.</span>
-    </motion.button>
+    </m.button>
   )
 }

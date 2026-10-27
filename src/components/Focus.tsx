@@ -1,72 +1,26 @@
-import { useEffect, useState } from 'react'
-import { motion } from 'motion/react'
+import { m } from 'motion/react'
 import { ArrowUpRight, Pause, Play, RotateCcw, Sparkles, Volume2 } from 'lucide-react'
 import {
   fmtDateMedium,
   fmtDuration,
   fmtTime,
-  iso,
   parseISO,
   relativeCountdown,
 } from '../lib/date'
-import { api } from '../lib/api'
-import { haptic } from '../lib/haptics'
+import { fmtClock, useFocusTimer } from '../focusTimer'
 import { usePlanner } from '../state'
-import type { FocusSession } from '../types'
 import { Switch } from './ui'
 
 const PRESETS = [25, 50, 90]
 
-const pad = (n: number) => String(n).padStart(2, '0')
-
 export function FocusView({ onOpen }: { onOpen: (id: string) => void }) {
-  const { events, now, notify, hapticsEnabled, setHaptics } = usePlanner()
-  const [preset, setPreset] = useState(25)
-  const [remaining, setRemaining] = useState(25 * 60)
-  const [running, setRunning] = useState(false)
-  const [sessions, setSessions] = useState<FocusSession[]>([])
-
-  useEffect(() => {
-    let alive = true
-    api<{ sessions: FocusSession[] }>(`/focus-sessions?date=${iso(new Date())}`)
-      .then((data) => {
-        if (alive) setSessions(data.sessions)
-      })
-      .catch(() => {
-        /* el foco se puede usar igualmente */
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!running) return
-    const id = window.setInterval(() => {
-      setRemaining((value) => Math.max(0, value - 1))
-    }, 1000)
-    return () => window.clearInterval(id)
-  }, [running])
-
-  useEffect(() => {
-    if (remaining !== 0 || !running) return
-    setRunning(false)
-    haptic('success')
-    notify(`Sesión de ${preset} min completada. Eso es constancia.`)
-    void api<{ session: FocusSession }>('/focus-sessions', {
-      method: 'POST',
-      body: { minutes: preset },
-    })
-      .then(({ session }) => setSessions((list) => [session, ...list]))
-      .catch(() => {
-        notify('La sesión terminó, pero no se pudo guardar en el servidor.')
-      })
-  }, [remaining, running, preset, notify])
+  const { events, now, hapticsEnabled, setHaptics } = usePlanner()
+  const { preset, remaining, running, sessions, choose, toggle, reset } = useFocusTimer()
 
   const total = preset * 60
   const progress = Math.min(1, Math.max(0, 1 - remaining / total))
   const circumference = 2 * Math.PI * 148
-  const clock = `${pad(Math.floor(remaining / 60))}:${pad(remaining % 60)}`
+  const clock = fmtClock(remaining)
 
   const upcoming = events
     .map((event) => {
@@ -76,25 +30,6 @@ export function FocusView({ onOpen }: { onOpen: (id: string) => void }) {
     })
     .filter(({ at }) => at >= now.getTime())
     .sort((a, b) => a.at - b.at)[0]
-
-  const choose = (minutes: number) => {
-    haptic('selection')
-    setPreset(minutes)
-    setRemaining(minutes * 60)
-    setRunning(false)
-  }
-
-  const toggle = () => {
-    haptic(running ? 'light' : 'medium')
-    if (!running && remaining === 0) setRemaining(preset * 60)
-    setRunning((value) => !value)
-  }
-
-  const reset = () => {
-    haptic('light')
-    setRunning(false)
-    setRemaining(preset * 60)
-  }
 
   const totalToday = sessions.reduce((sum, s) => sum + s.minutes, 0)
 
@@ -246,7 +181,7 @@ export function FocusView({ onOpen }: { onOpen: (id: string) => void }) {
                 <li className="sessions__empty">Aún sin sesiones. La primera es la que cuesta.</li>
               )}
               {sessions.map((session) => (
-                <motion.li
+                <m.li
                   key={session.id}
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -261,7 +196,7 @@ export function FocusView({ onOpen }: { onOpen: (id: string) => void }) {
                       minute: '2-digit',
                     })}
                   </em>
-                </motion.li>
+                </m.li>
               ))}
             </ul>
             {sessions.length > 0 && (

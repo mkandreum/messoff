@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import { ArrowRight, CalendarDays, Clock3, CornerDownLeft, Sparkles, X } from 'lucide-react'
 import type { Category } from '../types'
 import { CATEGORIES, CATEGORY_LABEL } from '../data'
@@ -78,7 +78,7 @@ export function QuickAdd({ open, onClose, preset, onCreated }: Props) {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           className="modal-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -88,7 +88,7 @@ export function QuickAdd({ open, onClose, preset, onCreated }: Props) {
             if (e.target === e.currentTarget) onClose()
           }}
         >
-          <motion.div
+          <m.div
             className="quick"
             ref={panel}
             role="dialog"
@@ -216,8 +216,8 @@ export function QuickAdd({ open, onClose, preset, onCreated }: Props) {
                 </button>
               </footer>
             </form>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

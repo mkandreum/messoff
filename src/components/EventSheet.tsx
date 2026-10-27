@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion } from 'motion/react'
+import { m, useDragControls } from 'motion/react'
 import {
   AlertTriangle,
   CalendarDays,
@@ -9,6 +9,7 @@ import {
   GripVertical,
   MapPin,
   Plus,
+  Repeat2,
   Trash2,
   Users,
   X,
@@ -27,7 +28,7 @@ import {
 import { overlaps } from '../lib/grid'
 import { haptic } from '../lib/haptics'
 import { useBodyLock, useFocusTrap } from '../lib/focus'
-import { usePlanner } from '../state'
+import { clampEvent, usePlanner } from '../state'
 import { AvatarStack, CategoryTag, initials } from './ui'
 
 type Props = {
@@ -36,7 +37,13 @@ type Props = {
   onSelect: (id: string) => void
 }
 
-const DURATIONS = [30, 45, 60, 90, 120]
+const DURATIONS = [15, 30, 45, 60, 90, 120]
+
+/** Días laborables que quedan en la semana del evento (lunes = 1). */
+const restOfWeek = (date: string) => {
+  const dow = (parseISO(date).getDay() + 6) % 7
+  return Array.from({ length: Math.max(0, 4 - dow) }, (_, i) => i + 1)
+}
 
 export function EventSheet({ event, onClose, onSelect }: Props) {
   const {
@@ -45,8 +52,10 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
     deleteEvent,
     duplicateEvent,
     restoreEvent,
+    addEvent,
     notify,
   } = usePlanner()
+  const dragControls = useDragControls()
   const [draft, setDraft] = useState(event)
   const [newItem, setNewItem] = useState('')
   const [newPerson, setNewPerson] = useState('')
@@ -60,7 +69,7 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
   }, [event.id])
 
   const patch = (partial: Partial<CalEvent>) => {
-    const next = { ...draft, ...partial }
+    const next = clampEvent({ ...draft, ...partial })
     setDraft(next)
     saveEvent(next)
   }
@@ -75,9 +84,29 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
   const total = draft.checklist?.length ?? 0
   const checkPct = total ? Math.round((checked / total) * 100) : 0
 
-  const shift = (days: number) => {
-    haptic('selection')
-    patch({ date: iso(addDays(parseISO(draft.date), days)) })
+  const moveTo = (date: Date) => {
+    const next = iso(date)
+    if (next === draft.date) return
+    haptic('snap')
+    patch({ date: next })
+  }
+
+  const repeat = (label: string, offsets: number[]) => {
+    const base = parseISO(draft.date)
+    const { id: _id, ...rest } = draft
+    for (const offset of offsets) {
+      addEvent({
+        ...rest,
+        date: iso(addDays(base, offset)),
+        checklist: (draft.checklist ?? []).map((item) => ({
+          ...item,
+          id: crypto.randomUUID(),
+          done: false,
+        })),
+      })
+    }
+    haptic('success')
+    notify(`Repetido ${label}`)
   }
 
   const toggleItem = (id: string, done: boolean) => {
@@ -95,7 +124,7 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
     patch({
       checklist: [
         ...(draft.checklist ?? []),
-        { id: `ck-${Date.now().toString(36)}`, text, done: false },
+        { id: crypto.randomUUID(), text, done: false },
       ],
     })
     setNewItem('')
@@ -129,7 +158,7 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
   }
 
   return (
-    <motion.div
+    <m.div
       className="overlay"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -139,7 +168,7 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <motion.div
+      <m.div
         ref={panel}
         className="sheet"
         role="dialog"
@@ -147,7 +176,25 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
         aria-label={`Detalles de ${draft.title || 'evento'}`}
         layoutId={`ev-${event.id}`}
         transition={{ type: 'spring', stiffness: 480, damping: 38, mass: 0.9 }}
+        drag="y"
+        dragControls={dragControls}
+        dragListener={false}
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0.04, bottom: 0.7 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.y > 110 || info.velocity.y > 650) {
+            haptic('swipe')
+            onClose()
+          }
+        }}
       >
+        <div
+          className="sheet__grabber"
+          onPointerDown={(e) => dragControls.start(e)}
+          aria-hidden="true"
+        >
+          <i />
+        </div>
         <span className={`sheet__accent sheet__accent--${draft.category}`} aria-hidden="true" />
 
         <header className="sheet__bar">
@@ -178,7 +225,7 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
         </header>
 
         <div className="sheet__scroll">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22, delay: 0.04 }}
@@ -258,19 +305,57 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
             <div className="sheet__section">
               <span className="sheet__label">Mover a</span>
               <div className="move-chips">
-                <button type="button" className="move" onClick={() => shift(0)}>
+                <button type="button" className="move" onClick={() => moveTo(new Date())}>
                   Hoy
                 </button>
-                <button type="button" className="move" onClick={() => shift(1)}>
+                <button
+                  type="button"
+                  className="move"
+                  onClick={() => moveTo(addDays(new Date(), 1))}
+                >
                   Mañana
                 </button>
-                <button type="button" className="move" onClick={() => shift(7)}>
-                  En una semana
+                <button
+                  type="button"
+                  className="move"
+                  onClick={() => moveTo(addDays(parseISO(draft.date), 7))}
+                >
+                  +1 semana
                 </button>
                 <span className="move__hint">
                   <GripVertical size={13} strokeWidth={1.8} aria-hidden="true" />
                   o arrastra la tarjeta
                 </span>
+              </div>
+            </div>
+
+            <div className="sheet__section">
+              <span className="sheet__label">
+                <Repeat2 size={13} strokeWidth={1.8} aria-hidden="true" /> Repetir
+              </span>
+              <div className="move-chips">
+                <button
+                  type="button"
+                  className="move move--solid"
+                  onClick={() => repeat('mañana también', [1])}
+                >
+                  Al día siguiente
+                </button>
+                <button
+                  type="button"
+                  className="move move--solid"
+                  onClick={() => repeat('el resto de la semana', restOfWeek(draft.date))}
+                  disabled={restOfWeek(draft.date).length === 0}
+                >
+                  Resto de la semana
+                </button>
+                <button
+                  type="button"
+                  className="move move--solid"
+                  onClick={() => repeat('4 semanas más', [7, 14, 21, 28])}
+                >
+                  4 semanas
+                </button>
               </div>
             </div>
 
@@ -418,7 +503,7 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
             <p className="sheet__footnote">
               Todo se guarda solo. Tus datos viven en tu cuenta.
             </p>
-          </motion.div>
+          </m.div>
         </div>
 
         <footer className="sheet__foot">
@@ -433,7 +518,7 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
             </button>
           </div>
         </footer>
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   )
 }

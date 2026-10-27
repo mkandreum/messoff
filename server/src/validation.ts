@@ -12,7 +12,7 @@ const date = z
   .regex(DATE_RE, 'La fecha debe tener el formato YYYY-MM-DD')
 
 const checklistItem = z.object({
-  id: z.string().uuid('El identificador de la subtarea no es válido').optional(),
+  id: z.string().trim().min(1).max(64).optional(),
   text: z.string().trim().min(1, 'La subtarea no puede estar vacía').max(200),
   done: z.boolean().optional(),
 })

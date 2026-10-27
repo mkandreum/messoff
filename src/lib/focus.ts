@@ -11,6 +11,18 @@ export function useFocusTrap(
 ) {
   useEffect(() => {
     if (!active) return
+    // Escape cierra la capa aunque el foco se haya quedado fuera de ella.
+    const onWindowKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      if (ref.current?.contains(document.activeElement)) return
+      onClose()
+    }
+    window.addEventListener('keydown', onWindowKey)
+    return () => window.removeEventListener('keydown', onWindowKey)
+  }, [active, onClose, ref])
+
+  useEffect(() => {
+    if (!active) return
     const node = ref.current
     if (!node) return
     const previous = document.activeElement as HTMLElement | null

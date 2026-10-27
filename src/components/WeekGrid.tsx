@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion, useMotionValue } from 'motion/react'
+import { AnimatePresence, m, useMotionValue } from 'motion/react'
 import { createPortal } from 'react-dom'
 import type { CalEvent } from '../types'
 import {
@@ -23,19 +23,28 @@ import {
   overlaps,
   topPct,
 } from '../lib/grid'
-import { haptic } from '../lib/haptics'
+import { haptic, hapticTick } from '../lib/haptics'
 import { usePlanner } from '../state'
 import { EventCard } from './EventCard'
 
 type Props = {
   days: Date[]
-  events: CalEvent[]
   onOpen: (id: string) => void
   onPickDay: (day: Date) => void
   onSlotClick?: (date: Date, start: number) => void
 }
 
 type DropTarget = { date: string; start: number }
+
+/** Zoom CSS del documento: las coordenadas del puntero no lo incluyen. */
+const pageZoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1
+
+const offsetLabel = () => {
+  const minutes = -new Date().getTimezoneOffset()
+  const sign = minutes >= 0 ? '+' : '−'
+  const abs = Math.abs(minutes)
+  return `GMT${sign}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, '0')}` : ''}`
+}
 type DragSession = {
   event: CalEvent
   rect: DOMRect
@@ -43,8 +52,8 @@ type DragSession = {
   startY: number
 }
 
-export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props) {
-  const { moveEvent, notify, saveEvent, now } = usePlanner()
+export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
+  const { moveEvent, notify, saveEvent, now, eventsByDate } = usePlanner()
   const scroller = useRef<HTMLDivElement>(null)
   const cols = useRef<HTMLDivElement>(null)
   const [dragEvent, setDragEvent] = useState<CalEvent | null>(null)
@@ -60,6 +69,7 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
   const setDropTarget = (next: DropTarget | null) => {
     const prev = targetRef.current
     if (prev?.date === next?.date && prev?.start === next?.start) return
+    if (next && session.current) hapticTick()
     targetRef.current = next
     setTarget(next)
   }
@@ -81,7 +91,7 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
         return
       }
       const previous = moveEvent(active.event.id, drop.date, drop.start)
-      haptic('success')
+      haptic('snap')
       notify(
         `«${active.event.title}» movido a ${fmtDateMedium(parseISO(drop.date))} · ${fmtTime(
           drop.start,
@@ -109,8 +119,9 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
       e.preventDefault()
       const current = session.current
       if (!current) return
-      x.set(e.clientX - current.startX)
-      y.set(e.clientY - current.startY)
+      const z = pageZoom()
+      x.set((e.clientX - current.startX) / z)
+      y.set((e.clientY - current.startY) / z)
 
       const el = document.elementFromPoint(e.clientX, e.clientY)
       const col = el?.closest<HTMLElement>('[data-date]')
@@ -215,7 +226,11 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
       const grid = cols.current
       if (!scroll || !grid) return
       const colHeight = grid.getBoundingClientRect().height
-      scroll.scrollTop = Math.max(0, ((9 * 60 - DAY_START) / TOTAL_MIN) * colHeight - 16)
+      const showsToday = days.some((d) => isToday(d))
+      const focus = showsToday
+        ? Math.max(DAY_START, Math.min(DAY_END - 4 * 60, nowMinutes() - 90))
+        : 8 * 60
+      scroll.scrollTop = Math.max(0, ((focus - DAY_START) / TOTAL_MIN) * colHeight - 16)
       const todayIndex = days.findIndex((d) => isToday(d))
       if (todayIndex > 0 && days.length > 3) {
         const colWidth = grid.getBoundingClientRect().width / days.length
@@ -231,7 +246,7 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
   const nowMin = nowMinutes(now)
   const activeConflicts =
     dragEvent && target
-      ? events.filter(
+      ? (eventsByDate.get(target.date) ?? []).filter(
           (e) =>
             e.id !== dragEvent.id &&
             overlaps(
@@ -250,11 +265,11 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
         <div className="cal__inner">
           <div className="cal__head">
             <div className="cal__corner" aria-hidden="true">
-              <span>GMT+1</span>
+              <span>{offsetLabel()}</span>
             </div>
             <div className="cal__heads">
               {days.map((day) => {
-                const dayEvents = events.filter((e) => e.date === iso(day))
+                const dayEvents = eventsByDate.get(iso(day)) ?? []
                 return (
                   <button
                     type="button"
@@ -280,16 +295,14 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
             <div className="cal__gutter" aria-hidden="true">
               {HOURS.map((hour) => (
                 <span key={hour} className="cal__hour" style={{ top: `${topPct(hour * 60)}%` }}>
-                  {hour}:00
+                  {String(hour).padStart(2, '0')}:00
                 </span>
               ))}
             </div>
             <div className="cal__cols" ref={cols}>
               {days.map((day) => {
                 const date = iso(day)
-                const dayEvents = events
-                  .filter((event) => event.date === date)
-                  .sort((a, b) => a.start - b.start || b.duration - a.duration)
+                const dayEvents = eventsByDate.get(date) ?? []
                 const isDrop = target?.date === date
                 const stacked = new Set<string>()
                 let maxEnd = -1
@@ -340,7 +353,7 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
                         className={`drop-slot ${activeConflicts.length ? 'has-conflict' : ''}`}
                         style={{
                           top: `${topPct(target.start)}%`,
-                          height: `calc(${heightPct(dragEvent.duration)}% - 5px)`,
+                          height: `calc(${heightPct(dragEvent.duration, target.start)}% - 5px)`,
                         }}
                         aria-hidden="true"
                       >
@@ -366,14 +379,14 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
       {createPortal(
         <AnimatePresence>
           {dragEvent && ghostRect && (
-            <motion.div
+            <m.div
               className={`drag-ghost drag-ghost--${dragEvent.category}`}
               aria-hidden="true"
               style={{
-                left: ghostRect.left,
-                top: ghostRect.top,
-                width: ghostRect.width,
-                height: ghostRect.height,
+                left: ghostRect.left / pageZoom(),
+                top: ghostRect.top / pageZoom(),
+                width: ghostRect.width / pageZoom(),
+                height: ghostRect.height / pageZoom(),
                 x,
                 y,
               }}
@@ -393,7 +406,7 @@ export function WeekGrid({ days, events, onOpen, onPickDay, onSlotClick }: Props
                   {activeConflicts.length > 0 && ' · se solapa'}
                 </span>
               )}
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>,
         document.body,

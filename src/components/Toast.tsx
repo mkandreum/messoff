@@ -1,48 +1,29 @@
-import { AnimatePresence, motion } from 'motion/react'
-import { X } from 'lucide-react'
-import { haptic } from '../lib/haptics'
+import { Toaster } from 'sonner'
 import { usePlanner } from '../state'
 
+/**
+ * Avisos con Sonner: se apilan, se descartan deslizando y respetan
+ * el sistema visual de Pulso (clases propias, sin estilos de la librería).
+ */
 export function Toast() {
-  const { toast, dismissToast } = usePlanner()
-
+  const { theme } = usePlanner()
   return (
-    <AnimatePresence>
-      {toast && (
-        <motion.div
-          key={toast.id}
-          className="toast"
-          role="status"
-          initial={{ opacity: 0, y: 14, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 8, scale: 0.99 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 36 }}
-        >
-          <span className="toast__dot" aria-hidden="true" />
-          <p className="toast__msg">{toast.message}</p>
-          {toast.actionLabel && (
-            <button
-              type="button"
-              className="toast__action"
-              onClick={() => {
-                haptic('light')
-                toast.onAction?.()
-                dismissToast()
-              }}
-            >
-              {toast.actionLabel}
-            </button>
-          )}
-          <button
-            type="button"
-            className="toast__close"
-            onClick={dismissToast}
-            aria-label="Cerrar aviso"
-          >
-            <X size={14} strokeWidth={1.9} aria-hidden="true" />
-          </button>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <Toaster
+      position="bottom-center"
+      theme={theme === 'night' ? 'dark' : 'light'}
+      offset={24}
+      mobileOffset={{ bottom: 'calc(92px + env(safe-area-inset-bottom))' }}
+      gap={8}
+      visibleToasts={3}
+      toastOptions={{
+        unstyled: true,
+        classNames: {
+          toast: 'toast',
+          title: 'toast__msg',
+          actionButton: 'toast__action',
+          closeButton: 'toast__close',
+        },
+      }}
+    />
   )
 }

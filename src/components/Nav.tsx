@@ -1,3 +1,4 @@
+import { m } from 'motion/react'
 import { CalendarDays, ListChecks, Plus, SunMedium, Timer } from 'lucide-react'
 import type { View } from '../types'
 import { haptic } from '../lib/haptics'
@@ -18,8 +19,14 @@ const ITEMS = [
 
 export function Nav({ view, onNavigate, onNew }: Props) {
   const go = (next: View) => {
+    if (next === view) return
     haptic('selection')
     onNavigate(next)
+  }
+
+  const create = () => {
+    haptic('medium')
+    onNew()
   }
 
   return (
@@ -42,6 +49,13 @@ export function Nav({ view, onNavigate, onNew }: Props) {
                 aria-current={active ? 'page' : undefined}
                 aria-label={label}
               >
+                {active && (
+                  <m.span
+                    layoutId="rail-indicator"
+                    className="rail__indicator"
+                    transition={{ type: 'spring', stiffness: 520, damping: 38 }}
+                  />
+                )}
                 <span className="rail__icon">
                   <Icon size={20} strokeWidth={1.7} aria-hidden="true" />
                 </span>
@@ -54,9 +68,16 @@ export function Nav({ view, onNavigate, onNew }: Props) {
         </div>
 
         <div className="rail__foot">
-          <button type="button" className="rail__new" onClick={onNew} aria-label="Crear evento">
+          <m.button
+            type="button"
+            className="rail__new"
+            onClick={create}
+            aria-label="Crear evento"
+            whileTap={{ scale: 0.9, rotate: 90 }}
+            transition={{ type: 'spring', stiffness: 600, damping: 22 }}
+          >
             <Plus size={20} strokeWidth={2} aria-hidden="true" />
-          </button>
+          </m.button>
           <span className="rail__hint">N</span>
         </div>
       </nav>
@@ -72,14 +93,16 @@ export function Nav({ view, onNavigate, onNew }: Props) {
               icon={<Icon size={20} strokeWidth={1.8} aria-hidden="true" />}
             />
           ))}
-          <button
+          <m.button
             type="button"
             className="tabbar__add"
-            onClick={onNew}
+            onClick={create}
             aria-label="Crear evento"
+            whileTap={{ scale: 0.88, rotate: 90 }}
+            transition={{ type: 'spring', stiffness: 600, damping: 22 }}
           >
             <Plus size={22} strokeWidth={2} aria-hidden="true" />
-          </button>
+          </m.button>
           {ITEMS.slice(2).map(({ id, label, icon: Icon }) => (
             <TabButton
               key={id}
@@ -107,15 +130,29 @@ function TabButton({
   icon: React.ReactNode
 }) {
   return (
-    <button
+    <m.button
       type="button"
       className={`tab ${active ? 'is-active' : ''}`}
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       aria-label={label}
+      whileTap={{ scale: 0.92 }}
     >
-      <span className="tab__icon">{icon}</span>
+      {active && (
+        <m.span
+          layoutId="tab-indicator"
+          className="tab__indicator"
+          transition={{ type: 'spring', stiffness: 520, damping: 38 }}
+        />
+      )}
+      <m.span
+        className="tab__icon"
+        animate={{ y: active ? -1 : 0, scale: active ? 1.06 : 1 }}
+        transition={{ type: 'spring', stiffness: 600, damping: 30 }}
+      >
+        {icon}
+      </m.span>
       <span className="tab__label">{label}</span>
-    </button>
+    </m.button>
   )
 }

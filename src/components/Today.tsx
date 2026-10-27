@@ -17,7 +17,7 @@ import {
   nowMinutes,
   relativeCountdown,
 } from '../lib/date'
-import { DAY_END, DAY_START, TOTAL_MIN } from '../lib/grid'
+import { WORK_END as DAY_END, WORK_START as DAY_START, WORK_TOTAL as TOTAL_MIN } from '../lib/grid'
 import { haptic } from '../lib/haptics'
 import { usePlanner } from '../state'
 import { AvatarStack } from './ui'
@@ -47,25 +47,22 @@ const gapList = (events: CalEvent[]) => {
 }
 
 export function TodayView({ onOpen, onGoWeek, onGoTasks, onGoFocus }: Props) {
-  const { events, tasks, now, toggleTask, scheduleTask, notify, deleteEvent } = usePlanner()
+  const { eventsByDate, tasks, now, toggleTask, scheduleTask, notify, unscheduleTask } = usePlanner()
   const today = iso(now)
   const nowMin = nowMinutes(now)
-  const todayEvents = events
-    .filter((e) => e.date === today)
-    .sort((a, b) => a.start - b.start)
+  const todayEvents = eventsByDate.get(today) ?? []
   const current = todayEvents.find((e) => e.start <= nowMin && e.start + e.duration > nowMin)
   const next = todayEvents.find((e) => e.start > nowMin)
   const busy = todayEvents.reduce((sum, e) => sum + e.duration, 0)
   const gaps = gapList(todayEvents)
   const freeMinutes = gaps.reduce((sum, g) => sum + (g.end - g.start), 0)
   const pending = tasks.filter((t) => !t.done)
-  const dueToday = pending
-    .filter((t) => t.due === today || (t.due && t.due < today))
-    .slice(0, 3)
+  const dueAll = pending.filter((t) => t.due === today || (t.due && t.due < today))
+  const dueToday = dueAll.slice(0, 4)
   const nextIndex = todayEvents.findIndex((e) => e.start + e.duration > nowMin)
   const week = allWeekDays(now)
   const weekBusy = week.map((day) =>
-    events.filter((e) => e.date === iso(day)).reduce((sum, e) => sum + e.duration, 0),
+    (eventsByDate.get(iso(day)) ?? []).reduce((sum, e) => sum + e.duration, 0),
   )
   const weekTotal = weekBusy.reduce((sum, v) => sum + v, 0)
   const longestGap = [...gaps].sort((a, b) => b.end - b.start - (a.end - a.start))[0]
@@ -79,10 +76,7 @@ export function TodayView({ onOpen, onGoWeek, onGoTasks, onGoFocus }: Props) {
     notify(
       `«${task.title}» va al calendario a las ${fmtTime(created.start)}`,
       'Deshacer',
-      () => {
-        deleteEvent(created.id)
-        toggleTask(task.id)
-      },
+      () => unscheduleTask(created.id, task.id),
     )
   }
 
@@ -107,7 +101,7 @@ export function TodayView({ onOpen, onGoWeek, onGoTasks, onGoFocus }: Props) {
         <div className="stat stat--accent">
           <span className="stat__label">Pendientes</span>
           <span className="stat__value">{pending.length}</span>
-          <span className="stat__hint">{dueToday.length} para hoy</span>
+          <span className="stat__hint">{dueAll.length} para hoy</span>
         </div>
       </div>
 
@@ -238,7 +232,7 @@ export function TodayView({ onOpen, onGoWeek, onGoTasks, onGoFocus }: Props) {
                 <h2 className="nowcard__title">{current.title}</h2>
                 <p className="nowcard__meta">
                   {fmtTime(current.start)} – {fmtTime(current.start + current.duration)} ·{' '}
-                  {current.location ?? 'Sin ubicación'}
+                  {current.location || 'Sin ubicación'}
                 </p>
                 <div className="nowcard__bar" aria-hidden="true">
                   <i
@@ -265,7 +259,7 @@ export function TodayView({ onOpen, onGoWeek, onGoTasks, onGoFocus }: Props) {
                   {fmtTime(next.start)}
                 </p>
                 <div className="nowcard__foot">
-                  <span>{next.location ?? 'Sin ubicación'}</span>
+                  <span>{next.location || 'Sin ubicación'}</span>
                   <button type="button" className="nowcard__cta" onClick={onGoFocus}>
                     Enfocar <ArrowUpRight size={14} strokeWidth={1.8} aria-hidden="true" />
                   </button>
