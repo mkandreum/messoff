@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { AnimatePresence, m } from 'motion/react'
 import { ArrowRight, Check, Plus } from 'lucide-react'
 import type { Category, Task } from '../types'
 import { CATEGORIES, CATEGORY_LABEL } from '../data'
@@ -21,8 +22,11 @@ export function TasksView() {
     tasks,
     addTask,
     toggleTask,
+    updateTask,
+    deleteTask,
+    restoreTask,
     scheduleTask,
-    deleteEvent,
+    unscheduleTask,
     notify,
   } = usePlanner()
   const [filter, setFilter] = useState<Filter>('todas')
@@ -76,11 +80,25 @@ export function TasksView() {
     notify(
       `«${task.title}» programada a las ${fmtTime(created.start)}`,
       'Deshacer',
-      () => {
-        deleteEvent(created.id)
-        toggleTask(task.id)
-      },
+      () => unscheduleTask(created.id, task.id),
     )
+  }
+
+  const remove = (task: Task) => {
+    const removed = deleteTask(task.id)
+    if (!removed) return
+    notify(`«${task.title}» eliminada`, 'Deshacer', () => restoreTask(removed))
+  }
+
+  const toggle = (id: string) => {
+    const task = tasks.find((t) => t.id === id)
+    toggleTask(id)
+    if (task && !task.done && pending.length === 1) {
+      window.setTimeout(() => {
+        haptic('celebrate')
+        notify('Bandeja vacía. Lo que queda es tiempo tuyo.')
+      }, 260)
+    }
   }
 
   const doneCount = completed.length
@@ -140,6 +158,13 @@ export function TasksView() {
                     setFilter(item.id)
                   }}
                 >
+                  {active && (
+                    <m.span
+                      layoutId="filter-indicator"
+                      className="filter__indicator"
+                      transition={{ type: 'spring', stiffness: 520, damping: 40 }}
+                    />
+                  )}
                   <span>{item.label}</span>
                   {item.id === 'todas' && <em>{pending.length}</em>}
                   {item.id === 'hechas' && <em>{completed.length}</em>}
@@ -166,22 +191,30 @@ export function TasksView() {
                   {group.key}
                   <span>{group.items.length}</span>
                 </h2>
-                {group.items.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    onToggle={toggleTask}
-                    onSchedule={schedule}
-                    showTag={false}
-                  />
-                ))}
+                <AnimatePresence initial={false}>
+                  {group.items.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      onToggle={toggle}
+                      onSchedule={schedule}
+                      onDelete={remove}
+                      onUpdate={updateTask}
+                      showTag={false}
+                    />
+                  ))}
+                </AnimatePresence>
               </section>
             ))}
           </div>
 
           <footer className="tasksview__foot">
             <div className="progress" aria-hidden="true">
-              <i style={{ width: `${progress}%` }} />
+              <m.i
+                initial={false}
+                animate={{ width: `${progress}%` }}
+                transition={{ type: 'spring', stiffness: 220, damping: 30 }}
+              />
             </div>
             <span>
               {doneCount} de {tasks.length} {tasks.length === 1 ? 'completada' : 'completadas'} ·{' '}
@@ -211,7 +244,7 @@ export function TasksView() {
             </div>
             <p className="mini-note">
               <Check size={13} strokeWidth={2} aria-hidden="true" />
-              Toca el calendario de una tarea para colocarla en el primer hueco libre.
+              Desliza a la derecha para completar, a la izquierda para eliminar. Toca una tarea para editarla.
             </p>
           </section>
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import {
   ArrowRight,
   CalendarDays,
@@ -175,7 +175,7 @@ export function CommandPalette({
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           className="palette-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -185,7 +185,7 @@ export function CommandPalette({
             if (e.target === e.currentTarget) onClose()
           }}
         >
-          <motion.div
+          <m.div
             className="palette"
             ref={panel}
             role="dialog"
@@ -271,8 +271,8 @@ export function CommandPalette({
               </span>
               <span className="palette__brand">pulso</span>
             </footer>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

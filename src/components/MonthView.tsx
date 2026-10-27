@@ -1,4 +1,5 @@
-import type { CalEvent } from '../types'
+import { usePlanner } from '../state'
+import { haptic } from '../lib/haptics'
 import {
   MONTHS,
   WEEKDAYS_MINI,
@@ -11,12 +12,12 @@ import {
 
 type Props = {
   anchor: Date
-  events: CalEvent[]
   onOpen: (id: string) => void
   onPickDay: (day: Date) => void
 }
 
-export function MonthView({ anchor, events, onOpen, onPickDay }: Props) {
+export function MonthView({ anchor, onOpen, onPickDay }: Props) {
+  const { eventsByDate } = usePlanner()
   const cells = monthMatrix(anchor)
   const rows = Array.from({ length: 6 }, (_, i) => cells.slice(i * 7, i * 7 + 7))
   const month = anchor.getMonth()
@@ -51,9 +52,7 @@ export function MonthView({ anchor, events, onOpen, onPickDay }: Props) {
               </span>
               {week.map((day) => {
                 const date = iso(day)
-                const dayEvents = events
-                  .filter((e) => e.date === date)
-                  .sort((a, b) => a.start - b.start)
+                const dayEvents = eventsByDate.get(date) ?? []
                 const outside = day.getMonth() !== month
                 return (
                   <div
@@ -82,7 +81,10 @@ export function MonthView({ anchor, events, onOpen, onPickDay }: Props) {
                           type="button"
                           key={event.id}
                           className={`month__chip month__chip--${event.category}`}
-                          onClick={() => onOpen(event.id)}
+                          onClick={() => {
+                            haptic('selection')
+                            onOpen(event.id)
+                          }}
                           title={`${fmtTime(event.start)} · ${event.title}`}
                           aria-label={`${event.title}, ${fmtTime(event.start)}`}
                         >

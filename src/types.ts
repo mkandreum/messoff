@@ -64,3 +64,8 @@ export type HapticKind =
   | 'nudge'
   | 'soft'
   | 'rigid'
+  | 'tick'
+  | 'snap'
+  | 'swipe'
+  | 'heartbeat'
+  | 'celebrate'

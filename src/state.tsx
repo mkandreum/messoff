@@ -8,22 +8,25 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { CalEvent, Category, ChecklistItem, Task, Theme, ToastState, User } from './types'
+import { toast } from 'sonner'
+import type { CalEvent, Category, ChecklistItem, Task, Theme, User } from './types'
 import { api, ApiError } from './lib/api'
 import { useAuth } from './auth'
-import { setHapticsEnabled as applyHaptics } from './lib/haptics'
+import { haptic, setHapticsEnabled as applyHaptics } from './lib/haptics'
 import { LoadError, Splash } from './components/Loading'
+
+type TaskPatch = Partial<Pick<Task, 'title' | 'due' | 'tag' | 'done'>>
 
 type PlannerValue = {
   user: User
   events: CalEvent[]
+  /** Eventos agrupados por fecha (YYYY-MM-DD) y ordenados por hora. */
+  eventsByDate: Map<string, CalEvent[]>
   tasks: Task[]
   theme: Theme
   hapticsEnabled: boolean
   now: Date
-  toast: ToastState
   notify: (message: string, actionLabel?: string, onAction?: () => void) => void
-  dismissToast: () => void
   setTheme: (theme: Theme) => void
   setHaptics: (on: boolean) => void
   addEvent: (event: Omit<CalEvent, 'id'>) => CalEvent
@@ -36,13 +39,28 @@ type PlannerValue = {
   addChecklistItem: (eventId: string, text: string) => void
   addTask: (title: string, due: string | null, tag: Category) => Task
   toggleTask: (id: string) => void
-  deleteTask: (id: string) => void
+  updateTask: (id: string, patch: TaskPatch) => void
+  deleteTask: (id: string) => Task | undefined
+  restoreTask: (task: Task) => void
   scheduleTask: (id: string) => Promise<CalEvent | undefined>
+  unscheduleTask: (eventId: string, taskId: string) => void
+  refresh: () => Promise<void>
 }
 
 const PlannerContext = createContext<PlannerValue | null>(null)
 
 const uid = () => crypto.randomUUID()
+
+/** Un evento nunca puede cruzar la medianoche: el servidor lo rechazaría. */
+export function clampEvent<T extends Pick<CalEvent, 'start' | 'duration'>>(event: T): T {
+  const start = Math.min(1439 - 5, Math.max(0, Math.round(event.start)))
+  const duration = Math.max(5, Math.min(Math.round(event.duration), 1440 - start))
+  return start === event.start && duration === event.duration
+    ? event
+    : { ...event, start, duration }
+}
+
+const REFRESH_EVERY = 20_000
 
 export function PlannerProvider({ user, children }: { user: User; children: ReactNode }) {
   const { setUser, logout } = useAuth()
@@ -50,17 +68,32 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [toast, setToast] = useState<ToastState>(null)
   const [now, setNow] = useState(() => new Date())
-  const toastTimer = useRef<number | null>(null)
   const saveTimers = useRef<Map<string, number>>(new Map())
+  const inflight = useRef(0)
+  const lastSync = useRef(0)
+  const eventsRef = useRef(events)
+  const tasksRef = useRef(tasks)
+  eventsRef.current = events
+  tasksRef.current = tasks
 
   const theme = (user.theme === 'night' ? 'night' : 'paper') as Theme
   const hapticsEnabled = user.haptics
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 30_000)
-    return () => window.clearInterval(id)
+    // Alinea el reloj con el minuto para que "ahora" no vaya hasta 30 s tarde.
+    let interval: number | undefined
+    const timeout = window.setTimeout(
+      () => {
+        setNow(new Date())
+        interval = window.setInterval(() => setNow(new Date()), 60_000)
+      },
+      60_000 - (Date.now() % 60_000),
+    )
+    return () => {
+      window.clearTimeout(timeout)
+      if (interval) window.clearInterval(interval)
+    }
   }, [])
 
   useEffect(() => {
@@ -71,7 +104,7 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       /* almacenamiento no disponible */
     }
     const meta = document.querySelector('meta[name="theme-color"]')
-    meta?.setAttribute('content', theme === 'night' ? '#14130f' : '#f1ede2')
+    meta?.setAttribute('content', theme === 'night' ? '#14130f' : '#f0ebe0')
   }, [theme])
 
   useEffect(() => {
@@ -81,35 +114,49 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
   useEffect(
     () => () => {
       for (const timer of saveTimers.current.values()) window.clearTimeout(timer)
-      if (toastTimer.current) window.clearTimeout(toastTimer.current)
     },
     [],
   )
 
   const notify = useCallback(
     (message: string, actionLabel?: string, onAction?: () => void) => {
-      if (toastTimer.current) window.clearTimeout(toastTimer.current)
-      setToast({ id: Date.now(), message, actionLabel, onAction })
-      toastTimer.current = window.setTimeout(() => setToast(null), 5200)
+      toast(message, {
+        duration: actionLabel ? 6000 : 4200,
+        action:
+          actionLabel && onAction
+            ? {
+                label: actionLabel,
+                onClick: () => {
+                  haptic('light')
+                  onAction()
+                },
+              }
+            : undefined,
+      })
     },
     [],
   )
 
-  const dismissToast = useCallback(() => {
-    if (toastTimer.current) window.clearTimeout(toastTimer.current)
-    setToast(null)
-  }, [])
-
   const fail = useCallback(
-    (error: unknown, fallback: string): never | void => {
+    (error: unknown, fallback: string) => {
       if (error instanceof ApiError && error.status === 401) {
         void logout()
         return
       }
+      haptic('warning')
       notify(error instanceof ApiError ? error.message : fallback)
     },
     [logout, notify],
   )
+
+  /** Envuelve cada escritura para no sincronizar encima de cambios en vuelo. */
+  const track = useCallback(<T,>(promise: Promise<T>) => {
+    inflight.current += 1
+    return promise.finally(() => {
+      inflight.current -= 1
+      lastSync.current = Date.now()
+    })
+  }, [])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -119,6 +166,7 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       setEvents(data.events)
       setTasks(data.tasks)
       setUser(data.user)
+      lastSync.current = Date.now()
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         await logout()
@@ -132,9 +180,39 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
     }
   }, [logout, setUser])
 
+  /** Sincronización silenciosa: trae lo que hayas cambiado en otro dispositivo. */
+  const refresh = useCallback(async () => {
+    if (inflight.current > 0 || saveTimers.current.size > 0) return
+    try {
+      const data = await api<{ user: User; events: CalEvent[]; tasks: Task[] }>('/bootstrap')
+      if (inflight.current > 0 || saveTimers.current.size > 0) return
+      setEvents(data.events)
+      setTasks(data.tasks)
+      lastSync.current = Date.now()
+    } catch {
+      /* sin conexión: seguimos con lo que hay */
+    }
+  }, [])
+
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      setNow(new Date())
+      if (Date.now() - lastSync.current > REFRESH_EVERY) void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    window.addEventListener('online', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      window.removeEventListener('online', onVisible)
+    }
+  }, [refresh])
 
   const patchUser = useCallback(
     async (patch: Partial<Pick<User, 'theme' | 'haptics' | 'name'>>) => {
@@ -172,9 +250,9 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
 
   const addEvent = useCallback(
     (input: Omit<CalEvent, 'id'>) => {
-      const event: CalEvent = { ...input, id: uid() }
+      const event: CalEvent = clampEvent({ ...input, id: uid() })
       setEvents((list) => [...list, event])
-      void api<{ event: CalEvent }>('/events', { method: 'POST', body: event }).catch(
+      void track(api<{ event: CalEvent }>('/events', { method: 'POST', body: event })).catch(
         (error) => {
           setEvents((list) => list.filter((item) => item.id !== event.id))
           fail(error, 'No se pudo crear el evento')
@@ -182,32 +260,37 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       )
       return event
     },
-    [fail],
+    [fail, track],
   )
 
   const saveEvent = useCallback(
-    (next: CalEvent) => {
+    (input: CalEvent) => {
+      const next = clampEvent(input)
       setEvents((list) => list.map((event) => (event.id === next.id ? next : event)))
       const timer = saveTimers.current.get(next.id)
       if (timer) window.clearTimeout(timer)
       const handle = window.setTimeout(() => {
         saveTimers.current.delete(next.id)
-        void api<{ event: CalEvent }>(`/events/${next.id}`, {
-          method: 'PATCH',
-          body: next,
-        }).catch((error) => {
+        // Un título vacío no se envía: se guardará cuando el usuario escriba algo.
+        if (!next.title.trim()) return
+        void track(
+          api<{ event: CalEvent }>(`/events/${next.id}`, {
+            method: 'PATCH',
+            body: next,
+          }),
+        ).catch((error) => {
           fail(error, 'No se pudo guardar el evento')
           void loadData()
         })
       }, 350)
       saveTimers.current.set(next.id, handle)
     },
-    [fail, loadData],
+    [fail, loadData, track],
   )
 
   const moveEvent = useCallback(
     (id: string, date: string, start: number) => {
-      const previous = events.find((event) => event.id === id)
+      const previous = eventsRef.current.find((event) => event.id === id)
       if (!previous) return undefined
       if (previous.date === date && previous.start === start) return previous
 
@@ -215,26 +298,30 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       if (timer) window.clearTimeout(timer)
       saveTimers.current.delete(id)
 
-      const next = { ...previous, date, start }
+      const next = clampEvent({ ...previous, date, start })
       setEvents((list) => list.map((event) => (event.id === id ? next : event)))
-      void api<{ event: CalEvent }>(`/events/${id}`, {
-        method: 'PATCH',
-        body: next,
-      }).catch((error) => {
+      void track(
+        api<{ event: CalEvent }>(`/events/${id}`, {
+          method: 'PATCH',
+          body: next,
+        }),
+      ).catch((error) => {
         setEvents((list) => list.map((event) => (event.id === id ? previous : event)))
         fail(error, 'No se pudo mover el evento')
       })
       return previous
     },
-    [events, fail],
+    [fail, track],
   )
 
   const duplicateEvent = useCallback(
     async (id: string) => {
       try {
-        const data = await api<{ event: CalEvent }>(`/events/${id}/duplicate`, {
-          method: 'POST',
-        })
+        const data = await track(
+          api<{ event: CalEvent }>(`/events/${id}/duplicate`, {
+            method: 'POST',
+          }),
+        )
         setEvents((list) => [...list, data.event])
         return data.event
       } catch (error) {
@@ -242,24 +329,24 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
         return undefined
       }
     },
-    [fail],
+    [fail, track],
   )
 
   const deleteEvent = useCallback(
     (id: string) => {
-      const previous = events.find((event) => event.id === id)
+      const previous = eventsRef.current.find((event) => event.id === id)
       if (!previous) return undefined
       const timer = saveTimers.current.get(id)
       if (timer) window.clearTimeout(timer)
       saveTimers.current.delete(id)
       setEvents((list) => list.filter((event) => event.id !== id))
-      void api(`/events/${id}`, { method: 'DELETE' }).catch((error) => {
+      void track(api(`/events/${id}`, { method: 'DELETE' })).catch((error) => {
         setEvents((list) => [...list, previous])
         fail(error, 'No se pudo eliminar el evento')
       })
       return previous
     },
-    [events, fail],
+    [fail, track],
   )
 
   const restoreEvent = useCallback(
@@ -267,19 +354,19 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       setEvents((list) =>
         list.some((item) => item.id === event.id) ? list : [...list, event],
       )
-      void api<{ event: CalEvent }>('/events', { method: 'POST', body: event }).catch(
+      void track(api<{ event: CalEvent }>('/events', { method: 'POST', body: event })).catch(
         (error) => {
           setEvents((list) => list.filter((item) => item.id !== event.id))
           fail(error, 'No se pudo restaurar el evento')
         },
       )
     },
-    [fail],
+    [fail, track],
   )
 
   const toggleChecklist = useCallback(
     (eventId: string, itemId: string) => {
-      const event = events.find((item) => item.id === eventId)
+      const event = eventsRef.current.find((item) => item.id === eventId)
       if (!event) return
       saveEvent({
         ...event,
@@ -288,68 +375,91 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
         ),
       })
     },
-    [events, saveEvent],
+    [saveEvent],
   )
 
   const addChecklistItem = useCallback(
     (eventId: string, text: string) => {
-      const event = events.find((item) => item.id === eventId)
+      const event = eventsRef.current.find((item) => item.id === eventId)
       if (!event) return
       const item: ChecklistItem = { id: uid(), text, done: false }
       saveEvent({ ...event, checklist: [...(event.checklist ?? []), item] })
     },
-    [events, saveEvent],
+    [saveEvent],
   )
 
   const addTask = useCallback(
     (title: string, due: string | null, tag: Category) => {
       const task: Task = { id: uid(), title, due, tag, done: false }
       setTasks((list) => [task, ...list])
-      void api<{ task: Task }>('/tasks', { method: 'POST', body: task }).catch((error) => {
-        setTasks((list) => list.filter((item) => item.id !== task.id))
-        fail(error, 'No se pudo crear la tarea')
-      })
+      void track(api<{ task: Task }>('/tasks', { method: 'POST', body: task })).catch(
+        (error) => {
+          setTasks((list) => list.filter((item) => item.id !== task.id))
+          fail(error, 'No se pudo crear la tarea')
+        },
+      )
       return task
     },
-    [fail],
+    [fail, track],
   )
 
-  const toggleTask = useCallback(
-    (id: string) => {
-      const previous = tasks.find((task) => task.id === id)
+  const updateTask = useCallback(
+    (id: string, patch: TaskPatch) => {
+      const previous = tasksRef.current.find((task) => task.id === id)
       if (!previous) return
-      const next = { ...previous, done: !previous.done }
+      if (patch.title !== undefined && !patch.title.trim()) return
+      const next = { ...previous, ...patch }
       setTasks((list) => list.map((task) => (task.id === id ? next : task)))
-      void api(`/tasks/${id}`, {
-        method: 'PATCH',
-        body: { done: next.done },
-      }).catch((error) => {
+      void track(api(`/tasks/${id}`, { method: 'PATCH', body: patch })).catch((error) => {
         setTasks((list) => list.map((task) => (task.id === id ? previous : task)))
         fail(error, 'No se pudo actualizar la tarea')
       })
     },
-    [fail, tasks],
+    [fail, track],
+  )
+
+  const toggleTask = useCallback(
+    (id: string) => {
+      const previous = tasksRef.current.find((task) => task.id === id)
+      if (!previous) return
+      updateTask(id, { done: !previous.done })
+    },
+    [updateTask],
   )
 
   const deleteTask = useCallback(
     (id: string) => {
-      const previous = tasks.find((task) => task.id === id)
-      if (!previous) return
+      const previous = tasksRef.current.find((task) => task.id === id)
+      if (!previous) return undefined
       setTasks((list) => list.filter((task) => task.id !== id))
-      void api(`/tasks/${id}`, { method: 'DELETE' }).catch((error) => {
+      void track(api(`/tasks/${id}`, { method: 'DELETE' })).catch((error) => {
         setTasks((list) => [...list, previous])
         fail(error, 'No se pudo eliminar la tarea')
       })
+      return previous
     },
-    [fail, tasks],
+    [fail, track],
+  )
+
+  const restoreTask = useCallback(
+    (task: Task) => {
+      setTasks((list) => (list.some((item) => item.id === task.id) ? list : [task, ...list]))
+      void track(api('/tasks', { method: 'POST', body: task })).catch((error) => {
+        setTasks((list) => list.filter((item) => item.id !== task.id))
+        fail(error, 'No se pudo restaurar la tarea')
+      })
+    },
+    [fail, track],
   )
 
   const scheduleTask = useCallback(
     async (id: string) => {
       try {
-        const data = await api<{ event: CalEvent; task: Task }>(
-          `/tasks/${id}/schedule`,
-          { method: 'POST', body: {} },
+        const data = await track(
+          api<{ event: CalEvent; task: Task }>(`/tasks/${id}/schedule`, {
+            method: 'POST',
+            body: {},
+          }),
         )
         setEvents((list) => [...list, data.event])
         setTasks((list) => list.map((task) => (task.id === id ? data.task : task)))
@@ -359,20 +469,41 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
         return undefined
       }
     },
-    [fail],
+    [fail, track],
   )
+
+  /** Deshace "programar": borra el evento y devuelve la tarea a pendiente. */
+  const unscheduleTask = useCallback(
+    (eventId: string, taskId: string) => {
+      deleteEvent(eventId)
+      updateTask(taskId, { done: false })
+    },
+    [deleteEvent, updateTask],
+  )
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalEvent[]>()
+    for (const event of events) {
+      const list = map.get(event.date)
+      if (list) list.push(event)
+      else map.set(event.date, [event])
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.start - b.start || b.duration - a.duration)
+    }
+    return map
+  }, [events])
 
   const value = useMemo<PlannerValue>(
     () => ({
       user,
       events,
+      eventsByDate,
       tasks,
       theme,
       hapticsEnabled,
       now,
-      toast,
       notify,
-      dismissToast,
       setTheme,
       setHaptics,
       addEvent,
@@ -385,19 +516,22 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       addChecklistItem,
       addTask,
       toggleTask,
+      updateTask,
       deleteTask,
+      restoreTask,
       scheduleTask,
+      unscheduleTask,
+      refresh,
     }),
     [
       user,
       events,
+      eventsByDate,
       tasks,
       theme,
       hapticsEnabled,
       now,
-      toast,
       notify,
-      dismissToast,
       setTheme,
       setHaptics,
       addEvent,
@@ -410,8 +544,12 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       addChecklistItem,
       addTask,
       toggleTask,
+      updateTask,
       deleteTask,
+      restoreTask,
       scheduleTask,
+      unscheduleTask,
+      refresh,
     ],
   )
 
