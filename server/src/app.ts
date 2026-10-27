@@ -79,7 +79,7 @@ export function createApp(prisma: PrismaClient) {
       res
         .status(200)
         .type('text/plain')
-        .send('API de Pulso. Arranca el frontend con Vite en :5180 o construye el proyecto.')
+        .send('API de MessOff. Arranca el frontend con Vite en :5180 o construye el proyecto.')
     })
   }
 

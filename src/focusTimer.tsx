@@ -98,10 +98,10 @@ export function FocusProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!running) {
-      document.title = 'Pulso'
+      document.title = 'MessOff'
       return
     }
-    document.title = `${fmtClock(remaining)} · Enfoque · Pulso`
+    document.title = `${fmtClock(remaining)} · Enfoque · MessOff`
   }, [remaining, running])
 
   useEffect(() => {
@@ -113,7 +113,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     notify(`Sesión de ${minutes} min completada. Eso es constancia.`)
     try {
       if (document.visibilityState !== 'visible' && Notification.permission === 'granted') {
-        new Notification('Pulso · enfoque completado', {
+        new Notification('MessOff · enfoque completado', {
           body: `${minutes} minutos de atención real.`,
           tag: 'pulso-focus',
         })

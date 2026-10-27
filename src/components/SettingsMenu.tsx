@@ -423,7 +423,7 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
               <span className="settings__brandmark" aria-hidden="true">
                 ◍
               </span>
-              Pulso · Postgres · v1.0
+              MessOff · Postgres · v1.1
               <span className="settings__version">/api</span>
             </footer>
           </m.div>

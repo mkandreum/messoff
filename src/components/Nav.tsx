@@ -34,7 +34,7 @@ export function Nav({ view, onNavigate, onNew }: Props) {
       <nav className="rail" aria-label="Navegación principal">
         <div className="rail__brand">
           <Logo size={30} />
-          <span className="rail__word">pulso</span>
+          <span className="rail__word">messoff</span>
         </div>
 
         <div className="rail__nav">

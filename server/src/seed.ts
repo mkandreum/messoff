@@ -43,7 +43,7 @@ export async function seedWorkspace(tx: Prisma.TransactionClient, userId: string
 
   const events: DemoEvent[] = [
     {
-      title: 'Bienvenido a Pulso',
+      title: 'Bienvenido a MessOff',
       date: base,
       start: 9 * 60 + 30,
       duration: 60,

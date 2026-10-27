@@ -3,7 +3,7 @@ import { usePlanner } from '../state'
 
 /**
  * Avisos con Sonner: se apilan, se descartan deslizando y respetan
- * el sistema visual de Pulso (clases propias, sin estilos de la librería).
+ * el sistema visual de MessOff (clases propias, sin estilos de la librería).
  */
 export function Toast() {
   const { theme } = usePlanner()

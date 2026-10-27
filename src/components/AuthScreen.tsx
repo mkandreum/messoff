@@ -116,10 +116,10 @@ export function AuthScreen() {
 
   return (
     <main className="auth">
-      <section className="auth__intro" aria-label="Sobre Pulso">
+      <section className="auth__intro" aria-label="Sobre MessOff">
         <div className="auth__brand">
           <Logo size={34} />
-          <span>pulso</span>
+          <span>messoff</span>
         </div>
 
         <p className="eyebrow">
@@ -129,7 +129,7 @@ export function AuthScreen() {
         <h1 className="auth__title">
           Tu semana,{' '}
           <br />
-          <em>con pulso.</em>
+          <em>sin desorden.</em>
         </h1>
         <p className="auth__lead">
           Un calendario que se siente como papel y responde como una app. Sin ruido, sin
@@ -195,7 +195,7 @@ export function AuthScreen() {
         <div className="auth__card">
           <div className="auth__cardbrand">
             <Logo size={28} />
-            <span>pulso</span>
+            <span>messoff</span>
           </div>
 
           <div className="auth__tabs" role="tablist" aria-label="Entrar o crear cuenta">
@@ -378,7 +378,7 @@ export function AuthScreen() {
           </p>
         </div>
         <p className="auth__foot">
-          Pulso · papel, tinta y un poco de bermellón.
+          MessOff · papel, tinta y un poco de bermellón.
         </p>
       </section>
     </main>

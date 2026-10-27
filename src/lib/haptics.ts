@@ -13,7 +13,7 @@ export function setHapticsEnabled(next: boolean) {
   enabled = next
 }
 
-/** Patrones propios: el lenguaje táctil de Pulso. */
+/** Patrones propios: el lenguaje táctil de MessOff. */
 const CUSTOM: Partial<Record<HapticKind, HapticPreset>> = {
   // Cruce de franja al arrastrar: un clic seco, casi mecánico.
   tick: { pattern: [{ duration: 6, intensity: 0.45 }] },

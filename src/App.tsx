@@ -492,9 +492,9 @@ export function App() {
         </AnimatePresence>
 
         <footer className="appfoot">
-          <span>Pulso</span>
+          <span>MessOff</span>
           <span className="appfoot__dot" aria-hidden="true">✳</span>
-          <span>Tu semana, con pulso.</span>
+          <span>Tu semana, sin desorden.</span>
           <span className="appfoot__spacer" />
           <span>{fmtDateLong(now)}</span>
         </footer>

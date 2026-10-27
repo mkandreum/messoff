@@ -190,7 +190,7 @@ export function CommandPalette({
             ref={panel}
             role="dialog"
             aria-modal="true"
-            aria-label="Buscar en Pulso"
+            aria-label="Buscar en MessOff"
             initial={{ opacity: 0, scale: 0.98, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.985, y: -4 }}
@@ -269,7 +269,7 @@ export function CommandPalette({
               <span>
                 <kbd className="kbd">↵</kbd> abrir
               </span>
-              <span className="palette__brand">pulso</span>
+              <span className="palette__brand">messoff</span>
             </footer>
           </m.div>
         </m.div>

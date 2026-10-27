@@ -6,7 +6,7 @@ export function Splash({ label = 'Abriendo tu semana…' }: { label?: string }) 
       <div className="splash__mark">
         <Logo size={42} />
       </div>
-      <span className="splash__word">pulso</span>
+      <span className="splash__word">messoff</span>
       <span className="splash__label">{label}</span>
       <span className="splash__line" aria-hidden="true">
         <i />
@@ -26,7 +26,7 @@ export function LoadError({
 }) {
   return (
     <div className="splash splash--error" role="alert">
-      <span className="splash__word">pulso</span>
+      <span className="splash__word">messoff</span>
       <p className="splash__label">No hemos podido cargar tu agenda.</p>
       <p className="splash__error">{message}</p>
       <div className="splash__actions">

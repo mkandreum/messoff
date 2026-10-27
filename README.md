@@ -1,4 +1,4 @@
-# Pulso
+# MessOff
 
 **Agenda personal editorial, ahora de verdad.** Cuentas con contraseña, datos por usuario en PostgreSQL, drag & drop con hápticas y todo empaquetado en Docker. **Este repositorio no despliega nada**: tú decides cuándo y dónde con tu Coolify.
 
@@ -8,9 +8,9 @@
 ![Postgres](https://img.shields.io/badge/Postgres-16-2f6480)
 ![Docker](https://img.shields.io/badge/Docker-ready-996a12)
 
-Repositorio: [github.com/mkandreum/messoff](https://github.com/mkandreum/messoff)
+Repositorio: [github.com/mkandreum/messoff](https://github.com/mkandreum/messoff) · App Android nativa: [github.com/mkandreum/messoffapp](https://github.com/mkandreum/messoffapp)
 
-> Pulso nació del boceto de una agenda de papel. La estética se queda; la capa de juguete (localStorage) se ha sustituido por una API real, sesiones, base de datos y contenedores.
+> MessOff nació del boceto de una agenda de papel. La estética se queda; la capa de juguete (localStorage) se ha sustituido por una API real, sesiones, base de datos y contenedores.
 
 ---
 
