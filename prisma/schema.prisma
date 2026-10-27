@@ -22,6 +22,50 @@ model User {
   events        Event[]
   tasks         Task[]
   focusSessions FocusSession[]
+  memberships   TeamMember[]
+  sentInvites   TeamInvite[]
+}
+
+/// Equipo de trabajo con calendario compartido.
+model Team {
+  id        String   @id @default(uuid())
+  name      String
+  /// Clave de color del equipo: rojo, verde, azul, ocre, violeta, grafito
+  color     String   @default("azul")
+  /// Código para unirse con un enlace; se puede regenerar
+  joinCode  String   @unique
+  createdAt DateTime @default(now())
+
+  members TeamMember[]
+  invites TeamInvite[]
+  events  Event[]
+}
+
+model TeamMember {
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// owner | member
+  role     String   @default("member")
+  joinedAt DateTime @default(now())
+
+  @@id([teamId, userId])
+  @@index([userId])
+}
+
+/// Invitación por email: sirve para personas con cuenta y sin ella.
+model TeamInvite {
+  id          String   @id @default(uuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  email       String
+  invitedById String
+  invitedBy   User     @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([teamId, email])
+  @@index([email])
 }
 
 model Event {
@@ -38,6 +82,9 @@ model Event {
   location String @default("")
   note     String @default("")
   attendees String[] @default([])
+  /// Si es de un equipo, lo ven y editan todos sus miembros
+  teamId   String?
+  team     Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   checklist ChecklistItem[]
 
@@ -46,6 +93,7 @@ model Event {
 
   @@index([userId, date])
   @@index([userId, updatedAt])
+  @@index([teamId, date])
 }
 
 model ChecklistItem {

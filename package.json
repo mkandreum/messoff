@@ -18,7 +18,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "test:api": "cross-env NODE_ENV=test node --env-file-if-exists=.env --import tsx --test server/test/api.test.ts",
+    "test:api": "cross-env NODE_ENV=test node --env-file-if-exists=.env --import tsx --test server/test/api.test.ts server/test/teams.test.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

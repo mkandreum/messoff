@@ -1,6 +1,15 @@
 import type { ChecklistItem, Event, FocusSession, Task, User } from '@prisma/client'
 
-export type EventWithChecklist = Event & { checklist: ChecklistItem[] }
+export type EventWithChecklist = Event & {
+  checklist: ChecklistItem[]
+  user?: { id: string; name: string } | null
+}
+
+/** Lo que hay que pedir a Prisma para serializar un evento. */
+export const eventInclude = {
+  checklist: { orderBy: { position: 'asc' as const } },
+  user: { select: { id: true, name: true } },
+}
 
 export function toApiUser(user: User) {
   return {
@@ -24,6 +33,9 @@ export function toApiEvent(event: EventWithChecklist) {
     location: event.location,
     note: event.note,
     attendees: event.attendees,
+    teamId: event.teamId,
+    authorId: event.userId,
+    authorName: event.user?.name ?? null,
     checklist: [...event.checklist]
       .sort((a, b) => a.position - b.position)
       .map((item) => ({ id: item.id, text: item.text, done: item.done })),

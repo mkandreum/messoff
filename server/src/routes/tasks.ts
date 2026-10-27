@@ -3,12 +3,12 @@ import { Router } from 'express'
 import type { PrismaClient } from '@prisma/client'
 import { requireAuth, type AuthedRequest } from '../auth'
 import { asyncHandler, HttpError } from '../errors'
-import { toApiEvent, toApiTask } from '../serializers'
+import { eventInclude, toApiEvent, toApiTask } from '../serializers'
 import { addDays, today } from '../seed'
 import { parse, scheduleSchema, taskInputSchema, taskPatchSchema } from '../validation'
 
 const uid = () => crypto.randomUUID()
-const withChecklist = { checklist: { orderBy: { position: 'asc' as const } } }
+const withChecklist = eventInclude
 const SLOT_MINUTES = 45
 const DAY_START = 9 * 60
 const DAY_END = 20 * 60

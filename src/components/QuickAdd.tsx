@@ -8,6 +8,7 @@ import { haptic } from '../lib/haptics'
 import { useBodyLock, useFocusTrap } from '../lib/focus'
 import { parseQuickAdd } from '../lib/parse'
 import { usePlanner } from '../state'
+import { CalendarPicker } from './CalendarPicker'
 
 type Props = {
   open: boolean
@@ -26,7 +27,8 @@ const EXAMPLES = [
 const DURATIONS = [30, 45, 60, 90, 120]
 
 export function QuickAdd({ open, onClose, preset, onCreated }: Props) {
-  const { addEvent, notify } = usePlanner()
+  const { addEvent, notify, teams } = usePlanner()
+  const [teamId, setTeamId] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [manualCategory, setManualCategory] = useState<Category | null>(null)
   const [duration, setDuration] = useState(60)
@@ -46,6 +48,14 @@ export function QuickAdd({ open, onClose, preset, onCreated }: Props) {
     setText('')
     setManualCategory(null)
     setDuration(60)
+    // Recuerda el último calendario usado si todavía existe.
+    let last: string | null = null
+    try {
+      last = localStorage.getItem('messoff.lastCalendar')
+    } catch {
+      /* almacenamiento no disponible */
+    }
+    setTeamId(last && teams.some((team) => team.id === last) ? last : null)
     const timer = window.setTimeout(() => input.current?.focus(), 60)
     return () => window.clearTimeout(timer)
   }, [open])
@@ -65,7 +75,13 @@ export function QuickAdd({ open, onClose, preset, onCreated }: Props) {
       attendees: [],
       checklist: [],
       note: '',
+      teamId,
     })
+    try {
+      localStorage.setItem('messoff.lastCalendar', teamId ?? '')
+    } catch {
+      /* almacenamiento no disponible */
+    }
     haptic('success')
     onClose()
     notify(
@@ -179,6 +195,13 @@ export function QuickAdd({ open, onClose, preset, onCreated }: Props) {
                     ))}
                   </div>
                 </div>
+
+                {teams.length > 0 && (
+                  <div className="quick__group quick__group--wide">
+                    <span className="quick__label">Calendario</span>
+                    <CalendarPicker value={teamId} onChange={setTeamId} />
+                  </div>
+                )}
 
                 <div className="quick__group">
                   <span className="quick__label">Categoría</span>

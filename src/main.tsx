@@ -7,6 +7,7 @@ import { Splash } from './components/Loading'
 import { PlannerProvider } from './state'
 import { FocusProvider } from './focusTimer'
 import './styles.css'
+import './teams.css'
 
 const loadFeatures = () => import('./lib/motionFeatures').then((mod) => mod.default)
 

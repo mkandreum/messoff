@@ -13,6 +13,7 @@ import { createEventsRouter } from './routes/events'
 import { createTasksRouter } from './routes/tasks'
 import { createFocusRouter } from './routes/focus'
 import { createBootstrapRouter } from './routes/bootstrap'
+import { createTeamsRouter } from './routes/teams'
 
 export function createApp(prisma: PrismaClient) {
   const app = express()
@@ -55,6 +56,7 @@ export function createApp(prisma: PrismaClient) {
   app.use('/api/bootstrap', createBootstrapRouter(prisma))
   app.use('/api/events', createEventsRouter(prisma))
   app.use('/api/tasks', createTasksRouter(prisma))
+  app.use('/api/teams', createTeamsRouter(prisma))
   app.use('/api/focus-sessions', createFocusRouter(prisma))
 
   app.use('/api', (_req, res) => {

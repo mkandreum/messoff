@@ -3,6 +3,8 @@ import { MapPin } from 'lucide-react'
 import type { CalEvent } from '../types'
 import { fmtTime } from '../lib/date'
 import { heightPct, topPct } from '../lib/grid'
+import { usePlanner } from '../state'
+import { teamById, teamHex } from '../lib/teams'
 import { AvatarStack } from './ui'
 
 type Props = {
@@ -24,6 +26,8 @@ export function EventCard({
   origin,
   stacked,
 }: Props) {
+  const { teams, theme } = usePlanner()
+  const team = teamById(teams, event.teamId)
   const compact = event.duration <= 30
   const tight = event.duration <= 45
   const showMeta = event.duration >= 90
@@ -63,6 +67,14 @@ export function EventCard({
       title={`${event.title} · mantén pulsado para mover`}
     >
       <span className="event__rail" aria-hidden="true" />
+      {team && (
+        <span
+          className="event__team"
+          style={{ ['--c' as string]: teamHex(team.color, theme === 'night') }}
+          title={`Equipo: ${team.name}`}
+          aria-hidden="true"
+        />
+      )}
       <span className="event__grip" data-drag-handle aria-hidden="true" title="Arrastrar" />
       <span className="event__dots" data-drag-handle aria-hidden="true" title="Arrastrar">
         <i />
@@ -101,7 +113,9 @@ export function EventCard({
           ) : null}
         </>
       )}
-      <span className="sr-only">. Mantén pulsado para mover.</span>
+      <span className="sr-only">
+        {team ? `. Equipo ${team.name}` : ''}. Mantén pulsado para mover.
+      </span>
     </m.button>
   )
 }

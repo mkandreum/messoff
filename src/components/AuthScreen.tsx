@@ -42,7 +42,9 @@ const FEATURES = [
 
 export function AuthScreen() {
   const { login, register, bootError, notice, clearNotice } = useAuth()
-  const [mode, setMode] = useState<Mode>('login')
+  const [mode, setMode] = useState<Mode>(() =>
+    new URLSearchParams(window.location.search).has('join') ? 'register' : 'login',
+  )
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -232,6 +234,12 @@ export function AuthScreen() {
             </p>
           </header>
 
+          {new URLSearchParams(window.location.search).has('join') && (
+            <p className="auth__notice">
+              <Info size={15} strokeWidth={1.8} aria-hidden="true" />
+              Te han invitado a un equipo. Entra o crea tu cuenta y te unirás automáticamente.
+            </p>
+          )}
           {notice && (
             <p className="auth__notice">
               <Info size={15} strokeWidth={1.8} aria-hidden="true" />

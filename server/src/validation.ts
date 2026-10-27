@@ -65,6 +65,7 @@ export const eventInputSchema = z
     note: z.string().max(5000).optional(),
     attendees: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     checklist: z.array(checklistItem).max(50).optional(),
+    teamId: z.string().uuid().nullable().optional(),
   })
   .refine((value) => value.start + value.duration <= 1440, {
     message: 'El evento no puede terminar después de medianoche',
@@ -82,6 +83,7 @@ export const eventPatchSchema = z
     note: z.string().max(5000).optional(),
     attendees: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     checklist: z.array(checklistItem).max(50).optional(),
+    teamId: z.string().uuid().nullable().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'No hay cambios que guardar',
@@ -105,6 +107,25 @@ export const taskPatchSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: 'No hay cambios que guardar',
   })
+
+export const TEAM_COLORS = ['rojo', 'verde', 'azul', 'ocre', 'violeta', 'grafito'] as const
+
+export const teamInputSchema = z.object({
+  name: z.string().trim().min(1, 'Ponle un nombre al equipo').max(50, 'El nombre es demasiado largo'),
+  color: z.enum(TEAM_COLORS, { message: 'Color no válido' }).optional(),
+})
+
+export const teamPatchSchema = teamInputSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, { message: 'No hay cambios que guardar' })
+
+export const inviteSchema = z.object({
+  email: z.string().trim().toLowerCase().email('El email no es válido').max(254),
+})
+
+export const joinSchema = z.object({
+  code: z.string().trim().min(4, 'El código no es válido').max(40),
+})
 
 export const scheduleSchema = z.object({
   date: date.optional(),

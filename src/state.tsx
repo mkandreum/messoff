@@ -9,7 +9,17 @@ import {
   type ReactNode,
 } from 'react'
 import { toast } from 'sonner'
-import type { CalEvent, Category, ChecklistItem, Task, Theme, User } from './types'
+import type {
+  CalEvent,
+  Category,
+  ChecklistItem,
+  Invitation,
+  Task,
+  Team,
+  TeamColor,
+  Theme,
+  User,
+} from './types'
 import { api, ApiError } from './lib/api'
 import { useAuth } from './auth'
 import { haptic, setHapticsEnabled as applyHaptics } from './lib/haptics'
@@ -17,12 +27,20 @@ import { LoadError, Splash } from './components/Loading'
 
 type TaskPatch = Partial<Pick<Task, 'title' | 'due' | 'tag' | 'done'>>
 
+type TeamsPayload = { teams: Team[]; invitations: Invitation[] }
+type BootstrapPayload = TeamsPayload & { user: User; events: CalEvent[]; tasks: Task[] }
+
 type PlannerValue = {
   user: User
   events: CalEvent[]
   /** Eventos agrupados por fecha (YYYY-MM-DD) y ordenados por hora. */
   eventsByDate: Map<string, CalEvent[]>
   tasks: Task[]
+  teams: Team[]
+  invitations: Invitation[]
+  /** Calendarios ocultos: 'me' o el id de un equipo. */
+  hiddenCalendars: string[]
+  toggleCalendar: (id: string) => void
   theme: Theme
   hapticsEnabled: boolean
   now: Date
@@ -45,6 +63,16 @@ type PlannerValue = {
   scheduleTask: (id: string) => Promise<CalEvent | undefined>
   unscheduleTask: (eventId: string, taskId: string) => void
   refresh: () => Promise<void>
+  createTeam: (name: string, color: TeamColor) => Promise<string | undefined>
+  updateTeam: (id: string, patch: { name?: string; color?: TeamColor }) => Promise<void>
+  deleteTeam: (id: string) => Promise<void>
+  regenerateCode: (id: string) => Promise<void>
+  inviteToTeam: (id: string, email: string) => Promise<{ registered: boolean } | undefined>
+  removeInvite: (teamId: string, inviteId: string) => Promise<void>
+  acceptInvitation: (id: string) => Promise<void>
+  declineInvitation: (id: string) => Promise<void>
+  joinTeam: (code: string) => Promise<{ id: string; name: string } | undefined>
+  leaveTeam: (teamId: string, userId: string) => Promise<void>
 }
 
 const PlannerContext = createContext<PlannerValue | null>(null)
@@ -66,6 +94,16 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
   const { setUser, logout } = useAuth()
   const [events, setEvents] = useState<CalEvent[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
+  const [invitations, setInvitations] = useState<Invitation[]>([])
+  const [hiddenCalendars, setHiddenCalendars] = useState<string[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('messoff.hiddenCalendars') ?? '[]')
+      return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []
+    } catch {
+      return []
+    }
+  })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [now, setNow] = useState(() => new Date())
@@ -162,9 +200,11 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
     setLoading(true)
     setLoadError(null)
     try {
-      const data = await api<{ user: User; events: CalEvent[]; tasks: Task[] }>('/bootstrap')
+      const data = await api<BootstrapPayload>('/bootstrap')
       setEvents(data.events)
       setTasks(data.tasks)
+      setTeams(data.teams ?? [])
+      setInvitations(data.invitations ?? [])
       setUser(data.user)
       lastSync.current = Date.now()
     } catch (error) {
@@ -184,10 +224,12 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
   const refresh = useCallback(async () => {
     if (inflight.current > 0 || saveTimers.current.size > 0) return
     try {
-      const data = await api<{ user: User; events: CalEvent[]; tasks: Task[] }>('/bootstrap')
+      const data = await api<BootstrapPayload>('/bootstrap')
       if (inflight.current > 0 || saveTimers.current.size > 0) return
       setEvents(data.events)
       setTasks(data.tasks)
+      setTeams(data.teams ?? [])
+      setInvitations(data.invitations ?? [])
       lastSync.current = Date.now()
     } catch {
       /* sin conexión: seguimos con lo que hay */
@@ -213,6 +255,28 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       window.removeEventListener('online', onVisible)
     }
   }, [refresh])
+
+  // Con equipos, los cambios de otras personas llegan solos cada medio minuto.
+  const hasTeams = teams.length > 0
+  useEffect(() => {
+    if (!hasTeams) return
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh()
+    }, 30_000)
+    return () => window.clearInterval(id)
+  }, [hasTeams, refresh])
+
+  const toggleCalendar = useCallback((id: string) => {
+    setHiddenCalendars((list) => {
+      const next = list.includes(id) ? list.filter((item) => item !== id) : [...list, id]
+      try {
+        localStorage.setItem('messoff.hiddenCalendars', JSON.stringify(next))
+      } catch {
+        /* almacenamiento no disponible */
+      }
+      return next
+    })
+  }, [])
 
   const patchUser = useCallback(
     async (patch: Partial<Pick<User, 'theme' | 'haptics' | 'name'>>) => {
@@ -481,9 +545,17 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
     [deleteEvent, updateTask],
   )
 
+  const visibleEvents = useMemo(
+    () =>
+      hiddenCalendars.length
+        ? events.filter((event) => !hiddenCalendars.includes(event.teamId ?? 'me'))
+        : events,
+    [events, hiddenCalendars],
+  )
+
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalEvent[]>()
-    for (const event of events) {
+    for (const event of visibleEvents) {
       const list = map.get(event.date)
       if (list) list.push(event)
       else map.set(event.date, [event])
@@ -492,14 +564,118 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       list.sort((a, b) => a.start - b.start || b.duration - a.duration)
     }
     return map
-  }, [events])
+  }, [visibleEvents])
+
+  // ---------- Equipos ----------
+
+  const teamCall = useCallback(
+    async <T extends TeamsPayload>(
+      path: string,
+      method: 'POST' | 'PATCH' | 'DELETE',
+      body?: unknown,
+      failMessage = 'No se pudo completar la acción',
+    ) => {
+      try {
+        const data = await track(api<T>(path, { method, body }))
+        setTeams(data.teams)
+        setInvitations(data.invitations)
+        return data
+      } catch (error) {
+        fail(error, failMessage)
+        return undefined
+      }
+    },
+    [fail, track],
+  )
+
+  const createTeam = useCallback(
+    async (name: string, color: TeamColor) => {
+      const data = await teamCall<TeamsPayload & { team: { id: string } }>('/teams', 'POST', { name, color }, 'No se pudo crear el equipo')
+      return data?.team.id
+    },
+    [teamCall],
+  )
+
+  const updateTeam = useCallback(
+    async (id: string, patch: { name?: string; color?: TeamColor }) => {
+      await teamCall(`/teams/${id}`, 'PATCH', patch)
+    },
+    [teamCall],
+  )
+
+  const deleteTeam = useCallback(
+    async (id: string) => {
+      const data = await teamCall(`/teams/${id}`, 'DELETE')
+      if (data) await refresh()
+    },
+    [refresh, teamCall],
+  )
+
+  const regenerateCode = useCallback(
+    async (id: string) => {
+      await teamCall(`/teams/${id}/code`, 'POST', {})
+    },
+    [teamCall],
+  )
+
+  const inviteToTeam = useCallback(
+    async (id: string, email: string) => {
+      const data = await teamCall<TeamsPayload & { registered: boolean }>(`/teams/${id}/invites`, 'POST', { email }, 'No se pudo invitar')
+      return data ? { registered: data.registered } : undefined
+    },
+    [teamCall],
+  )
+
+  const removeInvite = useCallback(
+    async (teamId: string, inviteId: string) => {
+      await teamCall(`/teams/${teamId}/invites/${inviteId}`, 'DELETE')
+    },
+    [teamCall],
+  )
+
+  const acceptInvitation = useCallback(
+    async (id: string) => {
+      const data = await teamCall(`/teams/invitations/${id}/accept`, 'POST', {})
+      if (data) await refresh()
+    },
+    [refresh, teamCall],
+  )
+
+  const declineInvitation = useCallback(
+    async (id: string) => {
+      await teamCall(`/teams/invitations/${id}/decline`, 'POST', {})
+    },
+    [teamCall],
+  )
+
+  const joinTeam = useCallback(
+    async (code: string) => {
+      const data = await teamCall<TeamsPayload & { team: { id: string; name: string } }>('/teams/join', 'POST', { code }, 'No se pudo unir al equipo')
+      if (!data) return undefined
+      await refresh()
+      return data.team
+    },
+    [refresh, teamCall],
+  )
+
+  const leaveTeam = useCallback(
+    async (teamId: string, userId: string) => {
+      const data = await teamCall(`/teams/${teamId}/members/${userId}`, 'DELETE')
+      if (data) await refresh()
+    },
+    [refresh, teamCall],
+  )
 
   const value = useMemo<PlannerValue>(
     () => ({
       user,
-      events,
+      events: visibleEvents,
       eventsByDate,
       tasks,
+      teams,
+      invitations,
+      hiddenCalendars,
+      toggleCalendar,
       theme,
       hapticsEnabled,
       now,
@@ -522,12 +698,36 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       scheduleTask,
       unscheduleTask,
       refresh,
+      createTeam,
+      updateTeam,
+      deleteTeam,
+      regenerateCode,
+      inviteToTeam,
+      removeInvite,
+      acceptInvitation,
+      declineInvitation,
+      joinTeam,
+      leaveTeam,
     }),
     [
       user,
-      events,
+      visibleEvents,
       eventsByDate,
       tasks,
+      teams,
+      invitations,
+      hiddenCalendars,
+      toggleCalendar,
+      createTeam,
+      updateTeam,
+      deleteTeam,
+      regenerateCode,
+      inviteToTeam,
+      removeInvite,
+      acceptInvitation,
+      declineInvitation,
+      joinTeam,
+      leaveTeam,
       theme,
       hapticsEnabled,
       now,

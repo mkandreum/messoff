@@ -30,6 +30,7 @@ import { haptic } from '../lib/haptics'
 import { useBodyLock, useFocusTrap } from '../lib/focus'
 import { clampEvent, usePlanner } from '../state'
 import { AvatarStack, CategoryTag, initials } from './ui'
+import { CalendarPicker } from './CalendarPicker'
 
 type Props = {
   event: CalEvent
@@ -54,6 +55,8 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
     restoreEvent,
     addEvent,
     notify,
+    teams,
+    user,
   } = usePlanner()
   const dragControls = useDragControls()
   const [draft, setDraft] = useState(event)
@@ -358,6 +361,22 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
                 </button>
               </div>
             </div>
+
+            {teams.length > 0 && (
+              <div className="sheet__section">
+                <span className="sheet__label">Calendario</span>
+                <CalendarPicker
+                  value={draft.teamId ?? null}
+                  onChange={(teamId) => patch({ teamId })}
+                  disabled={!!draft.authorId && draft.authorId !== user.id}
+                />
+                {draft.teamId && draft.authorName && (
+                  <p className="sheet__hint">
+                    Creado por {draft.authorId === user.id ? 'ti' : draft.authorName}. Todo el equipo puede editarlo.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="sheet__section">
               <span className="sheet__label">Categoría</span>

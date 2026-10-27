@@ -3,11 +3,21 @@ import { Router } from 'express'
 import type { PrismaClient } from '@prisma/client'
 import { requireAuth, type AuthedRequest } from '../auth'
 import { asyncHandler, HttpError } from '../errors'
-import { toApiEvent } from '../serializers'
+import { eventInclude, toApiEvent } from '../serializers'
 import { eventInputSchema, eventPatchSchema, parse } from '../validation'
 
 const uid = () => crypto.randomUUID()
-const withChecklist = { checklist: { orderBy: { position: 'asc' as const } } }
+const withChecklist = eventInclude
+
+/** Eventos propios o de equipos de los que formo parte. */
+const accessible = (userId: string) => ({
+  OR: [{ userId }, { team: { members: { some: { userId } } } }],
+})
+
+async function assertMember(prisma: PrismaClient, teamId: string, userId: string) {
+  const member = await prisma.teamMember.findUnique({ where: { teamId_userId: { teamId, userId } } })
+  if (!member) throw new HttpError(403, 'No formas parte de ese equipo.', 'FORBIDDEN')
+}
 
 export function createEventsRouter(prisma: PrismaClient) {
   const router = Router()
@@ -18,7 +28,7 @@ export function createEventsRouter(prisma: PrismaClient) {
     asyncHandler(async (req, res) => {
       const user = (req as AuthedRequest).user
       const events = await prisma.event.findMany({
-        where: { userId: user.id },
+        where: accessible(user.id),
         include: withChecklist,
         orderBy: [{ date: 'asc' }, { start: 'asc' }],
       })
@@ -32,6 +42,7 @@ export function createEventsRouter(prisma: PrismaClient) {
       const user = (req as AuthedRequest).user
       const body = parse(eventInputSchema, req.body)
       const { checklist = [], ...event } = body
+      if (event.teamId) await assertMember(prisma, event.teamId, user.id)
       try {
         const created = await prisma.event.create({
           data: {
@@ -45,6 +56,7 @@ export function createEventsRouter(prisma: PrismaClient) {
             location: event.location ?? '',
             note: event.note ?? '',
             attendees: event.attendees ?? [],
+            teamId: event.teamId ?? null,
             checklist: {
               create: checklist.map((item, index) => ({
                 id: item.id ?? uid(),
@@ -77,9 +89,16 @@ export function createEventsRouter(prisma: PrismaClient) {
       const user = (req as AuthedRequest).user
       const body = parse(eventPatchSchema, req.body)
       const existing = await prisma.event.findFirst({
-        where: { id: req.params.id, userId: user.id },
+        where: { id: req.params.id, ...accessible(user.id) },
       })
       if (!existing) throw new HttpError(404, 'Ese evento no existe.', 'NOT_FOUND')
+      if (body.teamId !== undefined && body.teamId !== existing.teamId) {
+        // Solo quien lo creó decide dónde vive el evento.
+        if (existing.userId !== user.id) {
+          throw new HttpError(403, 'Solo quien creó el evento puede cambiar su calendario.', 'FORBIDDEN')
+        }
+        if (body.teamId) await assertMember(prisma, body.teamId, user.id)
+      }
 
       const nextStart = body.start ?? existing.start
       const nextDuration = body.duration ?? existing.duration
@@ -118,7 +137,7 @@ export function createEventsRouter(prisma: PrismaClient) {
     asyncHandler(async (req, res) => {
       const user = (req as AuthedRequest).user
       const result = await prisma.event.deleteMany({
-        where: { id: req.params.id, userId: user.id },
+        where: { id: req.params.id, ...accessible(user.id) },
       })
       if (result.count === 0) throw new HttpError(404, 'Ese evento no existe.', 'NOT_FOUND')
       res.json({ ok: true })
@@ -130,7 +149,7 @@ export function createEventsRouter(prisma: PrismaClient) {
     asyncHandler(async (req, res) => {
       const user = (req as AuthedRequest).user
       const source = await prisma.event.findFirst({
-        where: { id: req.params.id, userId: user.id },
+        where: { id: req.params.id, ...accessible(user.id) },
         include: withChecklist,
       })
       if (!source) throw new HttpError(404, 'Ese evento no existe.', 'NOT_FOUND')
@@ -147,6 +166,7 @@ export function createEventsRouter(prisma: PrismaClient) {
           location: source.location,
           note: source.note,
           attendees: source.attendees,
+          teamId: source.teamId,
           checklist: {
             create: source.checklist.map((item, index) => ({
               id: uid(),

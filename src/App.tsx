@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { ChevronLeft, ChevronRight, Pause, Play, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Mail, Pause, Play, Plus, Users } from 'lucide-react'
 import type { CalView, View } from './types'
 import {
   MONTHS,
@@ -16,6 +16,7 @@ import {
   weekRangeLabel,
 } from './lib/date'
 import { haptic } from './lib/haptics'
+import { teamHex } from './lib/teams'
 import { usePlanner } from './state'
 import { fmtClock, useFocusTimer } from './focusTimer'
 import { AppHeader } from './components/AppHeader'
@@ -41,7 +42,27 @@ const SettingsMenu = lazy(() =>
   import('./components/SettingsMenu').then((m) => ({ default: m.SettingsMenu })),
 )
 
+const AgendaView = lazy(() =>
+  import('./components/AgendaView').then((m) => ({ default: m.AgendaView })),
+)
+const TeamsSheet = lazy(() =>
+  import('./components/TeamsSheet').then((m) => ({ default: m.TeamsSheet })),
+)
+
+const readCalView = (): CalView => {
+  try {
+    const saved = localStorage.getItem('messoff.calView')
+    if (saved === 'dia' || saved === 'semana' || saved === 'agenda' || saved === 'mes') return saved
+  } catch {
+    /* almacenamiento no disponible */
+  }
+  // En el móvil la lista por días se lee mejor que una rejilla de 7 columnas.
+  return window.matchMedia('(max-width: 900px)').matches ? 'agenda' : 'semana'
+}
+
 const preloadLayers = () => {
+  void import('./components/AgendaView')
+  void import('./components/TeamsSheet')
   void import('./components/EventSheet')
   void import('./components/QuickAdd')
   void import('./components/CommandPalette')
@@ -54,16 +75,31 @@ const preloadLayers = () => {
 const CAL_VIEWS: { id: CalView; label: string }[] = [
   { id: 'dia', label: 'Día' },
   { id: 'semana', label: 'Semana' },
+  { id: 'agenda', label: 'Agenda' },
   { id: 'mes', label: 'Mes' },
 ]
 
 const ViewFallback = () => <div className="view-fallback" aria-hidden="true" />
 
 export function App() {
-  const { eventsByDate, events, tasks, now, user } = usePlanner()
+  const {
+    eventsByDate,
+    events,
+    tasks,
+    now,
+    user,
+    theme,
+    teams,
+    invitations,
+    hiddenCalendars,
+    toggleCalendar,
+    joinTeam,
+    notify,
+  } = usePlanner()
   const focus = useFocusTimer()
   const [view, setView] = useState<View>('calendario')
-  const [calView, setCalView] = useState<CalView>('semana')
+  const [calView, setCalView] = useState<CalView>(readCalView)
+  const [teamsOpen, setTeamsOpen] = useState(false)
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [direction, setDirection] = useState<1 | -1>(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -73,6 +109,30 @@ export function App() {
   const [quickPreset, setQuickPreset] = useState<{ date: Date; start: number } | null>(null)
   const [layersReady, setLayersReady] = useState(false)
   const swipe = useRef<{ x: number; y: number; t: number } | null>(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('messoff.calView', calView)
+    } catch {
+      /* almacenamiento no disponible */
+    }
+  }, [calView])
+
+  // Enlace de invitación: /?join=CODIGO une al equipo en cuanto hay sesión.
+  const joined = useRef(false)
+  useEffect(() => {
+    if (joined.current) return
+    const code = new URLSearchParams(window.location.search).get('join')
+    if (!code) return
+    joined.current = true
+    window.history.replaceState({}, '', window.location.pathname)
+    void joinTeam(code).then((team) => {
+      if (team) {
+        haptic('success')
+        notify(`Ya formas parte de «${team.name}»`)
+      }
+    })
+  }, [joinTeam, notify])
 
   useEffect(() => {
     // Precarga las capas en un momento ocioso para que abran al instante.
@@ -240,6 +300,10 @@ export function App() {
         <>
           Tu <em>mes</em>
         </>
+      ) : calView === 'agenda' ? (
+        <>
+          Tu <em>agenda</em>
+        </>
       ) : (
         <>
           Tu <em>semana</em>
@@ -269,6 +333,10 @@ export function App() {
       ) : calView === 'dia' ? (
         <>
           Todo lo de hoy, con espacio. <strong>Toca un hueco</strong> para crear.
+        </>
+      ) : calView === 'agenda' ? (
+        <>
+          Lo que viene, día a día. <strong>Toca un evento</strong> para abrirlo.
         </>
       ) : (
         <>
@@ -328,6 +396,25 @@ export function App() {
           onNew={newEvent}
           onOpenEvent={openEvent}
         />
+
+        {invitations.length > 0 && (
+          <button
+            type="button"
+            className="invitebanner"
+            onClick={() => {
+              haptic('selection')
+              setTeamsOpen(true)
+            }}
+          >
+            <Mail size={16} strokeWidth={1.8} aria-hidden="true" />
+            <span>
+              {invitations.length === 1
+                ? `${invitations[0].invitedBy} te ha invitado a «${invitations[0].teamName}»`
+                : `Tienes ${invitations.length} invitaciones a equipos`}
+            </span>
+            <strong>Ver</strong>
+          </button>
+        )}
 
         <AnimatePresence mode="wait" initial={false}>
           <m.div
@@ -455,6 +542,40 @@ export function App() {
                     </div>
                   </div>
 
+                  <div className="calpills" role="group" aria-label="Calendarios">
+                    {[{ id: 'me', name: 'Mío', color: undefined as string | undefined }, ...teams.map((t) => ({ id: t.id, name: t.name, color: teamHex(t.color, theme === 'night') }))].map((cal) => {
+                      const hidden = hiddenCalendars.includes(cal.id)
+                      return (
+                        <button
+                          key={cal.id}
+                          type="button"
+                          className={`calpill ${hidden ? 'is-off' : ''}`}
+                          style={cal.color ? { ['--c' as string]: cal.color } : undefined}
+                          onClick={() => {
+                            haptic('selection')
+                            toggleCalendar(cal.id)
+                          }}
+                          aria-pressed={!hidden}
+                          title={hidden ? `Mostrar ${cal.name}` : `Ocultar ${cal.name}`}
+                        >
+                          <i aria-hidden="true" />
+                          {cal.name}
+                        </button>
+                      )
+                    })}
+                    <button
+                      type="button"
+                      className="calpill calpill--teams"
+                      onClick={() => {
+                        haptic('selection')
+                        setTeamsOpen(true)
+                      }}
+                    >
+                      <Users size={13} strokeWidth={1.9} aria-hidden="true" />
+                      {teams.length === 0 ? 'Crear equipo' : 'Equipos'}
+                    </button>
+                  </div>
+
                   <div
                     className="calendarview__stage"
                     onTouchStart={onSwipeStart}
@@ -471,6 +592,12 @@ export function App() {
                       >
                         {calView === 'mes' ? (
                           <MonthView anchor={anchor} onOpen={openEvent} onPickDay={pickDay} />
+                        ) : calView === 'agenda' ? (
+                          <AgendaView
+                            days={days}
+                            onOpen={openEvent}
+                            onSlotClick={(date, start) => openQuick({ date, start })}
+                          />
                         ) : (
                           <WeekGrid
                             days={days}
@@ -566,6 +693,7 @@ export function App() {
               if (next === 'calendario') setCalView('semana')
             }}
             onNewEvent={newEvent}
+            onTeams={() => setTeamsOpen(true)}
             onNewTask={() => {
               navigate('tareas')
               window.setTimeout(() => {
@@ -577,7 +705,18 @@ export function App() {
         )}
 
         {(layersReady || settingsOpen) && (
-          <SettingsMenu open={settingsOpen} onClose={closeSettings} />
+          <SettingsMenu
+            open={settingsOpen}
+            onClose={closeSettings}
+            onTeams={() => {
+              setSettingsOpen(false)
+              setTeamsOpen(true)
+            }}
+          />
+        )}
+
+        {(layersReady || teamsOpen) && (
+          <TeamsSheet open={teamsOpen} onClose={() => setTeamsOpen(false)} />
         )}
       </Suspense>
       <Toast />

@@ -9,6 +9,7 @@ import {
   Search,
   Sun,
   Timer,
+  Users,
 } from 'lucide-react'
 import type { View } from '../types'
 import { fmtDateMedium, fmtTime } from '../lib/date'
@@ -22,6 +23,7 @@ type Props = {
   onNavigate: (view: View) => void
   onNewEvent: () => void
   onNewTask: () => void
+  onTeams?: () => void
   onOpenEvent: (id: string) => void
 }
 
@@ -40,6 +42,7 @@ export function CommandPalette({
   onNavigate,
   onNewEvent,
   onNewTask,
+  onTeams,
   onOpenEvent,
 }: Props) {
   const { events, tasks, theme, setTheme } = usePlanner()
@@ -102,6 +105,17 @@ export function CommandPalette({
         icon: <ListChecks size={16} strokeWidth={1.8} />,
         run: onNewTask,
       },
+      ...(onTeams
+        ? [
+            {
+              key: 'teams',
+              group: 'Acciones',
+              label: 'Equipos y calendarios compartidos',
+              icon: <Users size={16} strokeWidth={1.8} />,
+              run: onTeams,
+            },
+          ]
+        : []),
       {
         key: 'theme',
         group: 'Acciones',
@@ -158,7 +172,7 @@ export function CommandPalette({
           ...taskItems.filter((_, i) => i < 2),
         ]
     return filtered.slice(0, 14)
-  }, [events, tasks, query, theme, setTheme, onNavigate, onNewEvent, onNewTask, onOpenEvent])
+  }, [events, tasks, query, theme, setTheme, onNavigate, onNewEvent, onNewTask, onTeams, onOpenEvent])
 
   useEffect(() => {
     setIndex((value) => Math.min(value, Math.max(items.length - 1, 0)))

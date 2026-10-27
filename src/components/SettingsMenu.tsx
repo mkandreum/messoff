@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
 import {
   Check,
+  ChevronRight,
+  Users,
   KeyRound,
   LogOut,
   Moon,
@@ -29,7 +31,15 @@ const TESTS: { id: HapticKind; label: string }[] = [
 const message = (error: unknown, fallback: string) =>
   error instanceof ApiError ? error.message : fallback
 
-export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SettingsMenu({
+  open,
+  onClose,
+  onTeams,
+}: {
+  open: boolean
+  onClose: () => void
+  onTeams?: () => void
+}) {
   const auth = useAuth()
   const { user, theme, setTheme, hapticsEnabled, setHaptics, notify } = usePlanner()
   const [tested, setTested] = useState<string | null>(null)
@@ -178,6 +188,26 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
                 Cuenta
               </span>
             </section>
+
+            {onTeams && (
+              <section className="settings__section">
+                <button
+                  type="button"
+                  className="settings__teams"
+                  onClick={() => {
+                    haptic('selection')
+                    onTeams()
+                  }}
+                >
+                  <Users size={18} strokeWidth={1.7} aria-hidden="true" />
+                  <span>
+                    <strong>Equipos</strong>
+                    <em>Comparte un calendario con quien quieras</em>
+                  </span>
+                  <ChevronRight size={16} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+              </section>
+            )}
 
             <section className="settings__section">
               <p className="settings__label">Perfil</p>
