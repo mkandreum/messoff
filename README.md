@@ -343,3 +343,7 @@ Hecho para que lo toquen, lo muevan y lo sientan.
 - El service worker solo guarda la interfaz. Los datos de `/api` no se quedan en la caché del navegador.
 
 Las pruebas del analizador usan `src/lib/parse-cases.json`, idéntico al de la APK: `npm run test:unit`.
+
+## Tareas de equipo
+
+Una tarea puede vivir en un equipo y tener a alguien asignado. La ven y editan todos sus miembros; solo quien la creó puede cambiarla de sitio. En «Hoy» y en los contadores no aparecen las que tiene asignadas otra persona. Al salir de un equipo, las tareas que creaste vuelven a ser personales y las que tenías asignadas quedan sin asignar.

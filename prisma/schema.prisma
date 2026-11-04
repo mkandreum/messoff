@@ -22,7 +22,8 @@ model User {
   updatedAt    DateTime @updatedAt
 
   events        Event[]
-  tasks         Task[]
+  tasks         Task[]   @relation("TaskAuthor")
+  assignedTasks Task[]   @relation("TaskAssignee")
   focusSessions FocusSession[]
   memberships   TeamMember[]
   sentInvites   TeamInvite[]
@@ -41,6 +42,7 @@ model Team {
   members TeamMember[]
   invites TeamInvite[]
   events  Event[]
+  tasks   Task[]
 }
 
 model TeamMember {
@@ -120,8 +122,14 @@ model ChecklistItem {
 model Task {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation("TaskAuthor", fields: [userId], references: [id], onDelete: Cascade)
   title     String
+  /// Si es de un equipo, la ven y editan todos sus miembros
+  teamId     String?
+  team       Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  /// Miembro del equipo que se encarga; null si está sin asignar
+  assigneeId String?
+  assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   /// YYYY-MM-DD o null
   due       String?
   tag       String   @default("personal")
@@ -131,6 +139,8 @@ model Task {
 
   @@index([userId, done])
   @@index([userId, due])
+  @@index([teamId, done])
+  @@index([assigneeId])
 }
 
 model FocusSession {

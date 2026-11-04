@@ -86,7 +86,7 @@ export function App() {
   const {
     eventsByDate,
     events,
-    tasks,
+    myTasks: tasks,
     now,
     user,
     theme,

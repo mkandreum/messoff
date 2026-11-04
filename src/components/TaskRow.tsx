@@ -5,19 +5,65 @@ import type { Task } from '../types'
 import { addDays, iso, parseISO, relativeDay } from '../lib/date'
 import { CATEGORIES, CATEGORY_LABEL } from '../data'
 import { haptic } from '../lib/haptics'
+import { teamById, teamHex } from '../lib/teams'
+import { usePlanner } from '../state'
+import { CalendarPicker } from './CalendarPicker'
 
 type Props = {
   task: Task
   onToggle: (id: string) => void
   onSchedule?: (task: Task) => void
   onDelete?: (task: Task) => void
-  onUpdate?: (id: string, patch: Partial<Pick<Task, 'title' | 'due' | 'tag'>>) => void
+  onUpdate?: (id: string, patch: Partial<Pick<Task, 'title' | 'due' | 'tag' | 'teamId' | 'assigneeId'>>) => void
   showTag?: boolean
 }
 
 const THRESHOLD = 76
 
+/** Quién se encarga: alguien del equipo o nadie todavía. */
+export function AssigneePicker({
+  teamId,
+  value,
+  onChange,
+}: {
+  teamId: string | null | undefined
+  value: string | null | undefined
+  onChange: (id: string | null) => void
+}) {
+  const { teams, user } = usePlanner()
+  const team = teamById(teams, teamId)
+  if (!team) return null
+  const options = [
+    { id: null as string | null, name: 'Sin asignar' },
+    ...team.members.map((member) => ({
+      id: member.id as string | null,
+      name: member.id === user.id ? 'Yo' : member.name,
+    })),
+  ]
+  return (
+    <div className="task-assign" role="group" aria-label="Quién se encarga">
+      {options.map((option) => (
+        <button
+          key={option.id ?? 'nadie'}
+          type="button"
+          className={`chip ${(value ?? null) === option.id ? 'is-active' : ''}`}
+          aria-pressed={(value ?? null) === option.id}
+          onClick={() => {
+            haptic('selection')
+            onChange(option.id)
+          }}
+        >
+          {option.name}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function TaskRow({ task, onToggle, onSchedule, onDelete, onUpdate, showTag = true }: Props) {
+  const { teams, theme, user } = usePlanner()
+  const team = teamById(teams, task.teamId)
+  const assignee = task.assigneeId === user.id ? 'Yo' : task.assigneeName
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(task.title)
   const x = useMotionValue(0)
@@ -160,6 +206,13 @@ export function TaskRow({ task, onToggle, onSchedule, onDelete, onUpdate, showTa
               {dueLabel}
               {showTag && <em>· {CATEGORY_LABEL[task.tag]}</em>}
             </span>
+            {team && (
+              <span className="ag-team" style={{ ['--c' as string]: teamHex(team.color, theme === 'night') }}>
+                <i aria-hidden="true" />
+                {team.name}
+              </span>
+            )}
+            {team && <span className="task__who">{assignee ?? 'Sin asignar'}</span>}
           </span>
         </button>
 
@@ -231,6 +284,25 @@ export function TaskRow({ task, onToggle, onSchedule, onDelete, onUpdate, showTa
                   aria-label="Elegir fecha"
                 />
               </div>
+              {teams.length > 0 && (
+                <div className="task-edit__row">
+                  <CalendarPicker
+                    label="Dónde vive la tarea"
+                    value={task.teamId ?? null}
+                    onChange={(teamId) => onUpdate(task.id, { teamId, assigneeId: null })}
+                    disabled={!!task.authorId && task.authorId !== user.id}
+                  />
+                </div>
+              )}
+              {team && (
+                <div className="task-edit__row">
+                  <AssigneePicker
+                    teamId={task.teamId}
+                    value={task.assigneeId}
+                    onChange={(assigneeId) => onUpdate(task.id, { assigneeId })}
+                  />
+                </div>
+              )}
               <div className="task-edit__row">
                 <div className="tagpicker" role="group" aria-label="Etiqueta">
                   {CATEGORIES.map((category) => (

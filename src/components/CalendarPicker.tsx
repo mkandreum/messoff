@@ -6,10 +6,11 @@ type Props = {
   value: string | null
   onChange: (teamId: string | null) => void
   disabled?: boolean
+  label?: string
 }
 
 /** Elige dónde vive un evento: en tu calendario o en el de un equipo. */
-export function CalendarPicker({ value, onChange, disabled }: Props) {
+export function CalendarPicker({ value, onChange, disabled, label = 'Calendario del evento' }: Props) {
   const { teams, theme } = usePlanner()
   if (teams.length === 0) return null
   const options = [
@@ -17,7 +18,7 @@ export function CalendarPicker({ value, onChange, disabled }: Props) {
     ...teams.map((team) => ({ id: team.id as string | null, name: team.name, color: teamHex(team.color, theme === 'night') })),
   ]
   return (
-    <div className="calpick" role="group" aria-label="Calendario del evento">
+    <div className="calpick" role="group" aria-label={label}>
       {options.map((option) => (
         <button
           key={option.id ?? 'me'}

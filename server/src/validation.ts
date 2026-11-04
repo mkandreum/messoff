@@ -106,6 +106,8 @@ export const taskInputSchema = z.object({
   due: date.nullable().optional(),
   tag: category.optional(),
   done: z.boolean().optional(),
+  teamId: z.string().uuid().nullable().optional(),
+  assigneeId: z.string().uuid().nullable().optional(),
 })
 
 export const taskPatchSchema = z
@@ -114,6 +116,8 @@ export const taskPatchSchema = z
     due: date.nullable().optional(),
     tag: category.optional(),
     done: z.boolean().optional(),
+    teamId: z.string().uuid().nullable().optional(),
+    assigneeId: z.string().uuid().nullable().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'No hay cambios que guardar',

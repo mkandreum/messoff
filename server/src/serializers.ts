@@ -46,13 +46,29 @@ export function toApiEvent(event: EventWithChecklist) {
   }
 }
 
-export function toApiTask(task: Task) {
+/** Lo que hay que pedir a Prisma para serializar una tarea. */
+export const taskInclude = {
+  user: { select: { id: true, name: true } },
+  assignee: { select: { id: true, name: true } },
+}
+
+type TaskWithPeople = Task & {
+  user?: { id: string; name: string } | null
+  assignee?: { id: string; name: string } | null
+}
+
+export function toApiTask(task: TaskWithPeople) {
   return {
     id: task.id,
     title: task.title,
     due: task.due,
     tag: task.tag,
     done: task.done,
+    teamId: task.teamId,
+    assigneeId: task.assigneeId,
+    assigneeName: task.assignee?.name ?? null,
+    authorId: task.userId,
+    authorName: task.user?.name ?? null,
   }
 }
 

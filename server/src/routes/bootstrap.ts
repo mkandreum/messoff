@@ -2,7 +2,7 @@ import { Router } from 'express'
 import type { PrismaClient } from '@prisma/client'
 import { requireAuth, type AuthedRequest } from '../auth'
 import { asyncHandler } from '../errors'
-import { eventInclude, toApiEvent, toApiTask, toApiUser } from '../serializers'
+import { eventInclude, taskInclude, toApiEvent, toApiTask, toApiUser } from '../serializers'
 import { loadTeams } from './teams'
 
 export function createBootstrapRouter(prisma: PrismaClient) {
@@ -22,7 +22,10 @@ export function createBootstrapRouter(prisma: PrismaClient) {
           orderBy: [{ date: 'asc' }, { start: 'asc' }],
         }),
         prisma.task.findMany({
-          where: { userId: user.id },
+          where: {
+            OR: [{ userId: user.id }, { team: { members: { some: { userId: user.id } } } }],
+          },
+          include: taskInclude,
           orderBy: [{ done: 'asc' }, { due: 'asc' }, { createdAt: 'desc' }],
         }),
         loadTeams(prisma, user),

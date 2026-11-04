@@ -6,7 +6,8 @@ import { CATEGORIES, CATEGORY_LABEL } from '../data'
 import { fmtTime, iso, parseISO, relativeDay } from '../lib/date'
 import { haptic } from '../lib/haptics'
 import { usePlanner } from '../state'
-import { TaskRow } from './TaskRow'
+import { CalendarPicker } from './CalendarPicker'
+import { AssigneePicker, TaskRow } from './TaskRow'
 
 type Filter = 'todas' | 'hoy' | 'semana' | 'hechas'
 
@@ -28,7 +29,13 @@ export function TasksView() {
     scheduleTask,
     unscheduleTask,
     notify,
+    teams,
+    user,
   } = usePlanner()
+  // Qué tareas se ven: todas, las mías, las personales o las de un equipo.
+  const [scope, setScope] = useState<string>('todas')
+  const [teamId, setTeamId] = useState<string | null>(null)
+  const [assigneeId, setAssigneeId] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('todas')
   const [draft, setDraft] = useState('')
   const [tag, setTag] = useState<Category>('personal')
@@ -36,8 +43,14 @@ export function TasksView() {
   const today = iso(new Date())
   const weekEnd = iso(new Date(Date.now() + 6 * 86400000))
 
-  const pending = tasks.filter((t) => !t.done)
-  const completed = tasks.filter((t) => t.done)
+  const scoped = useMemo(() => {
+    if (scope === 'todas') return tasks
+    if (scope === 'mias') return tasks.filter((t) => t.assigneeId === user.id || (!t.teamId && !t.assigneeId))
+    if (scope === 'personales') return tasks.filter((t) => !t.teamId)
+    return tasks.filter((t) => t.teamId === scope)
+  }, [scope, tasks, user.id])
+  const pending = scoped.filter((t) => !t.done)
+  const completed = scoped.filter((t) => t.done)
   const visible = useMemo(() => {
     const list = filter === 'hechas' ? completed : pending
     if (filter === 'hoy') return list.filter((t) => t.due === today || (t.due && t.due < today))
@@ -67,7 +80,7 @@ export function TasksView() {
     e.preventDefault()
     const title = draft.trim()
     if (!title) return
-    addTask(title, today, tag)
+    addTask(title, today, tag, { teamId, assigneeId })
     setDraft('')
     haptic('success')
     notify('Tarea añadida a la bandeja')
@@ -102,7 +115,7 @@ export function TasksView() {
   }
 
   const doneCount = completed.length
-  const progress = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0
+  const progress = scoped.length ? Math.round((doneCount / scoped.length) * 100) : 0
 
   return (
     <div className="tasksview">
@@ -142,6 +155,44 @@ export function TasksView() {
               Añadir
             </button>
           </form>
+
+          {teams.length > 0 && (
+            <div className="taskform__place">
+              <CalendarPicker
+                label="Dónde vive la tarea"
+                value={teamId}
+                onChange={(next) => {
+                  setTeamId(next)
+                  setAssigneeId(null)
+                }}
+              />
+              <AssigneePicker teamId={teamId} value={assigneeId} onChange={setAssigneeId} />
+            </div>
+          )}
+
+          {teams.length > 0 && (
+            <div className="task-scope" role="group" aria-label="Qué tareas ver">
+              {[
+                { id: 'todas', name: 'Todas' },
+                { id: 'mias', name: 'Para mí' },
+                { id: 'personales', name: 'Personales' },
+                ...teams.map((team) => ({ id: team.id, name: team.name })),
+              ].map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`chip ${scope === option.id ? 'is-active' : ''}`}
+                  aria-pressed={scope === option.id}
+                  onClick={() => {
+                    haptic('selection')
+                    setScope(option.id)
+                  }}
+                >
+                  {option.name}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="filters" role="tablist" aria-label="Filtrar tareas">
             {FILTERS.map((item) => {
@@ -217,7 +268,7 @@ export function TasksView() {
               />
             </div>
             <span>
-              {doneCount} de {tasks.length} {tasks.length === 1 ? 'completada' : 'completadas'} ·{' '}
+              {doneCount} de {scoped.length} {scoped.length === 1 ? 'completada' : 'completadas'} ·{' '}
               {progress}%
             </span>
           </footer>

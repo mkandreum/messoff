@@ -38,6 +38,12 @@ export type Task = {
   due: string | null
   tag: Category
   done: boolean
+  /** Si es de un equipo, la ven y editan todos sus miembros. */
+  teamId?: string | null
+  assigneeId?: string | null
+  assigneeName?: string | null
+  authorId?: string | null
+  authorName?: string | null
 }
 
 export type ToastState = {

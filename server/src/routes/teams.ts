@@ -116,7 +116,11 @@ export function createTeamsRouter(prisma: PrismaClient) {
     asyncHandler(async (req, res) => {
       const user = me(req)
       await requireOwner(req.params.id, user.id)
-      await prisma.team.delete({ where: { id: req.params.id } })
+      await prisma.$transaction([
+        // Las tareas vuelven a quien las creó, ya sin nadie asignado.
+        prisma.task.updateMany({ where: { teamId: req.params.id }, data: { assigneeId: null } }),
+        prisma.team.delete({ where: { id: req.params.id } }),
+      ])
       res.json(await loadTeams(prisma, user))
     }),
   )
@@ -223,6 +227,8 @@ export function createTeamsRouter(prisma: PrismaClient) {
       await prisma.$transaction([
         // Lo que esa persona creó vuelve a su calendario personal.
         prisma.event.updateMany({ where: { teamId: req.params.id, userId: target }, data: { teamId: null } }),
+        prisma.task.updateMany({ where: { teamId: req.params.id, userId: target }, data: { teamId: null, assigneeId: null } }),
+        prisma.task.updateMany({ where: { teamId: req.params.id, assigneeId: target }, data: { assigneeId: null } }),
         prisma.teamMember.delete({ where: { teamId_userId: { teamId: req.params.id, userId: target } } }),
       ])
       res.json(await loadTeams(prisma, user))

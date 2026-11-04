@@ -6923,3 +6923,32 @@ html {
   flex-direction: row;
   flex-wrap: wrap;
 }
+
+/* ---------- Tareas de equipo ---------- */
+.taskform__place {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.task-assign,
+.task-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-scope {
+  margin-top: 12px;
+}
+
+.task__meta {
+  flex-wrap: wrap;
+}
+
+.task__who {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+}

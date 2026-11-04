@@ -27,7 +27,8 @@ import { useAuth } from './auth'
 import { haptic, setHapticsEnabled as applyHaptics } from './lib/haptics'
 import { LoadError, Splash } from './components/Loading'
 
-type TaskPatch = Partial<Pick<Task, 'title' | 'due' | 'tag' | 'done'>>
+type TaskPatch = Partial<Pick<Task, 'title' | 'due' | 'tag' | 'done' | 'teamId' | 'assigneeId'>>
+type TaskPlace = Pick<Task, 'teamId' | 'assigneeId'>
 
 type TeamsPayload = { teams: Team[]; invitations: Invitation[] }
 type BootstrapPayload = TeamsPayload & { user: User; events: CalEvent[]; tasks: Task[] }
@@ -38,6 +39,8 @@ type PlannerValue = {
   /** Eventos agrupados por fecha (YYYY-MM-DD) y ordenados por hora. */
   eventsByDate: Map<string, CalEvent[]>
   tasks: Task[]
+  /** Sin las de equipo que tiene asignadas otra persona: lo que te toca a ti. */
+  myTasks: Task[]
   teams: Team[]
   invitations: Invitation[]
   /** Calendarios ocultos: 'me' o el id de un equipo. */
@@ -62,7 +65,7 @@ type PlannerValue = {
   restoreEvent: (event: CalEvent) => void
   toggleChecklist: (eventId: string, itemId: string) => void
   addChecklistItem: (eventId: string, text: string) => void
-  addTask: (title: string, due: string | null, tag: Category) => Task
+  addTask: (title: string, due: string | null, tag: Category, place?: TaskPlace) => Task
   toggleTask: (id: string) => void
   updateTask: (id: string, patch: TaskPatch) => void
   deleteTask: (id: string) => Task | undefined
@@ -567,9 +570,23 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
     [saveEvent],
   )
 
+  const personName = (teamId?: string | null, id?: string | null) =>
+    teams.find((team) => team.id === teamId)?.members.find((member) => member.id === id)?.name ?? null
+
   const addTask = useCallback(
-    (title: string, due: string | null, tag: Category) => {
-      const task: Task = { id: uid(), title, due, tag, done: false }
+    (title: string, due: string | null, tag: Category, place?: TaskPlace) => {
+      const task: Task = {
+        id: uid(),
+        title,
+        due,
+        tag,
+        done: false,
+        teamId: place?.teamId ?? null,
+        assigneeId: place?.assigneeId ?? null,
+        assigneeName: personName(place?.teamId, place?.assigneeId),
+        authorId: user.id,
+        authorName: user.name,
+      }
       setTasks((list) => [task, ...list])
       void track(api<{ task: Task }>('/tasks', { method: 'POST', body: task })).catch(
         (error) => {
@@ -579,7 +596,8 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       )
       return task
     },
-    [fail, track],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fail, teams, track, user.id, user.name],
   )
 
   const updateTask = useCallback(
@@ -588,13 +606,17 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       if (!previous) return
       if (patch.title !== undefined && !patch.title.trim()) return
       const next = { ...previous, ...patch }
+      // Sin equipo no hay a quién asignarla.
+      if (!next.teamId) next.assigneeId = null
+      next.assigneeName = personName(next.teamId, next.assigneeId)
       setTasks((list) => list.map((task) => (task.id === id ? next : task)))
       void track(api(`/tasks/${id}`, { method: 'PATCH', body: patch })).catch((error) => {
         setTasks((list) => list.map((task) => (task.id === id ? previous : task)))
         fail(error, 'No se pudo actualizar la tarea')
       })
     },
-    [fail, track],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fail, teams, track],
   )
 
   const toggleTask = useCallback(
@@ -658,6 +680,11 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       updateTask(taskId, { done: false })
     },
     [deleteEvent, updateTask],
+  )
+
+  const myTasks = useMemo(
+    () => tasks.filter((task) => !task.assigneeId || task.assigneeId === user.id),
+    [tasks, user.id],
   )
 
   const visibleEvents = useMemo(() => {
@@ -788,6 +815,7 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       events: visibleEvents,
       eventsByDate,
       tasks,
+      myTasks,
       teams,
       invitations,
       hiddenCalendars,
@@ -833,6 +861,7 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       visibleEvents,
       eventsByDate,
       tasks,
+      myTasks,
       teams,
       invitations,
       hiddenCalendars,

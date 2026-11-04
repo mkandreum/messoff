@@ -47,7 +47,7 @@ const gapList = (events: CalEvent[]) => {
 }
 
 export function TodayView({ onOpen, onGoWeek, onGoTasks, onGoFocus }: Props) {
-  const { eventsByDate, tasks, now, toggleTask, scheduleTask, notify, unscheduleTask } = usePlanner()
+  const { eventsByDate, myTasks: tasks, now, toggleTask, scheduleTask, notify, unscheduleTask } = usePlanner()
   const today = iso(now)
   const nowMin = nowMinutes(now)
   const todayEvents = eventsByDate.get(today) ?? []
