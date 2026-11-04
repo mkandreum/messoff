@@ -36,6 +36,10 @@ export function toApiEvent(event: EventWithChecklist) {
     teamId: event.teamId,
     authorId: event.userId,
     authorName: event.user?.name ?? null,
+    repeat: event.repeat,
+    repeatUntil: event.repeatUntil,
+    repeatSkip: event.repeatSkip,
+    remind: event.remind,
     checklist: [...event.checklist]
       .sort((a, b) => a.position - b.position)
       .map((item) => ({ id: item.id, text: item.text, done: item.done })),

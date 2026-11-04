@@ -334,3 +334,12 @@ La dirección sigue siendo la del prototipo: papel cálido, tinta, hairlines, ti
 ---
 
 Hecho para que lo toquen, lo muevan y lo sientan.
+
+## Repetición, avisos y calendarios externos
+
+- Un evento repetido es una sola fila con su regla (`repeat`, `repeatUntil`, `repeatSkip`); web y APK la expanden al leerla.
+- Los avisos de la web solo saltan con la pestaña o la app instalada abiertas: no hay notificaciones push.
+- `GET /api/calendar/feed/<token>.ics` sirve la agenda a Google Calendar, Apple u Outlook. Es pública para quien tenga el enlace; se crea, cambia y desactiva en los ajustes de la cuenta.
+- El service worker solo guarda la interfaz. Los datos de `/api` no se quedan en la caché del navegador.
+
+Las pruebas del analizador usan `src/lib/parse-cases.json`, idéntico al de la APK: `npm run test:unit`.

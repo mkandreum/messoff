@@ -6,6 +6,7 @@ import {
   MONTHS,
   WEEKDAYS_SHORT,
   fmtDateMedium,
+  fmtDuration,
   fmtTime,
   isToday,
   iso,
@@ -24,6 +25,7 @@ import {
   topPct,
 } from '../lib/grid'
 import { haptic, hapticTick } from '../lib/haptics'
+import { layoutDay } from '../lib/recurrence'
 import { usePlanner } from '../state'
 import { EventCard } from './EventCard'
 
@@ -53,7 +55,7 @@ type DragSession = {
 }
 
 export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
-  const { moveEvent, notify, saveEvent, now, eventsByDate } = usePlanner()
+  const { moveEvent, resizeEvent, notify, now, eventsByDate } = usePlanner()
   const scroller = useRef<HTMLDivElement>(null)
   const cols = useRef<HTMLDivElement>(null)
   const [dragEvent, setDragEvent] = useState<CalEvent | null>(null)
@@ -90,16 +92,14 @@ export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
         haptic('light')
         return
       }
-      const previous = moveEvent(active.event.id, drop.date, drop.start)
+      const undo = moveEvent(active.event.id, drop.date, drop.start)
       haptic('snap')
       notify(
         `«${active.event.title}» movido a ${fmtDateMedium(parseISO(drop.date))} · ${fmtTime(
           drop.start,
         )}`,
         'Deshacer',
-        () => {
-          if (previous) saveEvent(previous)
-        },
+        () => undo?.(),
       )
     } else if (commit) {
       haptic('warning')
@@ -174,6 +174,7 @@ export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
     const startX = e.clientX
     const startY = e.clientY
     const isTouch = e.pointerType === 'touch'
+    if ((e.target as HTMLElement).closest('[data-resize-handle]')) return
     const fromHandle = !!(e.target as HTMLElement).closest('[data-drag-handle]')
     let armed = false
     let holdTimer: number | undefined
@@ -218,6 +219,54 @@ export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
 
   const suppressClick = () => Date.now() < suppressUntil.current
 
+  /** Tirar del borde inferior cambia la duración, de 15 en 15 minutos. */
+  const onResizeStart = (e: React.PointerEvent<HTMLElement>, event: CalEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const grid = cols.current
+    if (!grid) return
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    const card = handle.closest<HTMLElement>('[data-event-card]')
+    const minuteHeight = grid.getBoundingClientRect().height / TOTAL_MIN
+    const startY = e.clientY
+    const startHeight = card?.getBoundingClientRect().height ?? 0
+    let duration = event.duration
+    suppressUntil.current = Date.now() + 700
+    haptic('medium')
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = (ev.clientY - startY) / minuteHeight
+      const next = Math.max(SLOT, Math.min(DAY_END - event.start, Math.round((event.duration + delta) / SLOT) * SLOT))
+      if (next !== duration) {
+        duration = next
+        hapticTick()
+      }
+      if (card) card.style.height = `${startHeight + (duration - event.duration) * minuteHeight}px`
+    }
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onCancel)
+      suppressUntil.current = Date.now() + 450
+      if (card) card.style.height = ''
+      const undo = resizeEvent(event.id, duration)
+      if (undo) {
+        haptic('snap')
+        notify(`«${event.title}» dura ${fmtDuration(duration)}`, 'Deshacer', undo)
+      }
+    }
+    const onCancel = () => {
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onCancel)
+      if (card) card.style.height = ''
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onCancel)
+  }
+
   useEffect(() => () => cleanup.current?.(), [])
 
   useEffect(() => {
@@ -228,7 +277,7 @@ export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
       const colHeight = grid.getBoundingClientRect().height
       const showsToday = days.some((d) => isToday(d))
       const focus = showsToday
-        ? Math.max(DAY_START, Math.min(DAY_END - 4 * 60, nowMinutes() - 90))
+        ? Math.max(7 * 60, Math.min(DAY_END - 4 * 60, nowMinutes() - 90))
         : 8 * 60
       scroll.scrollTop = Math.max(0, ((focus - DAY_START) / TOTAL_MIN) * colHeight - 16)
       const todayIndex = days.findIndex((d) => isToday(d))
@@ -304,12 +353,7 @@ export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
                 const date = iso(day)
                 const dayEvents = eventsByDate.get(date) ?? []
                 const isDrop = target?.date === date
-                const stacked = new Set<string>()
-                let maxEnd = -1
-                for (const event of dayEvents) {
-                  if (event.start < maxEnd) stacked.add(event.id)
-                  maxEnd = Math.max(maxEnd, event.start + event.duration)
-                }
+                const placed = layoutDay(dayEvents)
                 return (
                   <div
                     key={date}
@@ -344,7 +388,8 @@ export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
                         onPressStart={onPressStart}
                         suppressClick={suppressClick}
                         origin={dragEvent?.id === event.id}
-                        stacked={stacked.has(event.id)}
+                        placement={placed.get(event.id)}
+                        onResizeStart={onResizeStart}
                       />
                     ))}
 
@@ -373,7 +418,7 @@ export function WeekGrid({ days, onOpen, onPickDay, onSlotClick }: Props) {
 
       <p className="cal__hint">
         <span className="cal__hint-dot" aria-hidden="true" />
-        Arrastra un evento a otro día (en móvil, mantén pulsado). Toca un hueco para crear.
+        Arrastra un evento a otro día (en móvil, mantén pulsado). Tira de su borde inferior para alargarlo.
       </p>
 
       {createPortal(

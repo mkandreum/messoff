@@ -1,0 +1,17 @@
+[
+  { "text": "Café con Lucía mañana 09:30", "title": "Café con Lucía", "date": "2026-11-05", "start": 570 },
+  { "text": "Reunión Semanal jueves 19:30", "title": "Reunión Semanal", "date": "2026-11-05", "start": 1170 },
+  { "text": "Cena a las 9 de la noche", "title": "Cena", "date": "2026-11-04", "start": 1260 },
+  { "text": "Dentista a las 10 y media de la mañana", "title": "Dentista", "date": "2026-11-04", "start": 630 },
+  { "text": "Merienda a las 5 de la tarde", "title": "Merienda", "date": "2026-11-04", "start": 1020 },
+  { "text": "Llamada a las 5", "title": "Llamada", "date": "2026-11-04", "start": 1020 },
+  { "text": "Gimnasio mañana por la tarde", "title": "Gimnasio", "date": "2026-11-05", "start": 960 },
+  { "text": "Revisión 12 de noviembre 16:00", "title": "Revisión", "date": "2026-11-12", "start": 960 },
+  { "text": "Vuelo el 3 de enero 07:15", "title": "Vuelo", "date": "2027-01-03", "start": 435 },
+  { "text": "Entrega 12/11 10:00", "title": "Entrega", "date": "2026-11-12", "start": 600 },
+  { "text": "Boda 20/06/2027 a las 18", "title": "Boda", "date": "2027-06-20", "start": 1080 },
+  { "text": "Yoga miércoles 09:00", "title": "Yoga", "date": "2026-11-11", "start": 540 },
+  { "text": "Yoga miércoles 18:00", "title": "Yoga", "date": "2026-11-04", "start": 1080 },
+  { "text": "Comité próximo miércoles 18:00", "title": "Comité", "date": "2026-11-11", "start": 1080 },
+  { "text": "Café pasado mañana 8h", "title": "Café", "date": "2026-11-06", "start": 480 }
+]

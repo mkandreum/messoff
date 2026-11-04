@@ -10,6 +10,7 @@ import {
   MapPin,
   Plus,
   Repeat2,
+  Bell,
   Trash2,
   Users,
   X,
@@ -31,6 +32,9 @@ import { useBodyLock, useFocusTrap } from '../lib/focus'
 import { clampEvent, usePlanner } from '../state'
 import { AvatarStack, CategoryTag, initials } from './ui'
 import { CalendarPicker } from './CalendarPicker'
+import { DayStrip, TimeWheels } from './DateTimePicker'
+import { REMIND_OPTIONS, REPEAT_OPTIONS, isRepeating, seriesId } from '../lib/recurrence'
+import { askReminderPermission } from '../lib/reminders'
 
 type Props = {
   event: CalEvent
@@ -51,9 +55,10 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
     events,
     saveEvent,
     deleteEvent,
+    deleteOccurrence,
+    detachOccurrence,
     duplicateEvent,
     restoreEvent,
-    addEvent,
     notify,
     teams,
     user,
@@ -62,6 +67,8 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
   const [draft, setDraft] = useState(event)
   const [newItem, setNewItem] = useState('')
   const [newPerson, setNewPerson] = useState('')
+  const [open, setOpen] = useState<'date' | 'time' | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const panel = useRef<HTMLDivElement>(null)
   useFocusTrap(panel, true, onClose)
   useBodyLock(true)
@@ -74,12 +81,18 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
   const patch = (partial: Partial<CalEvent>) => {
     const next = clampEvent({ ...draft, ...partial })
     setDraft(next)
-    saveEvent(next)
+    const id = saveEvent(next)
+    // Mover de día una aparición le cambia el id: la hoja la sigue.
+    if (id !== next.id) {
+      setDraft({ ...next, id })
+      onSelect(id)
+    }
   }
 
   const conflict = events.find(
     (other) =>
       other.id !== draft.id &&
+      seriesId(other.id) !== seriesId(draft.id) &&
       overlaps(draft, other),
   )
 
@@ -92,24 +105,6 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
     if (next === draft.date) return
     haptic('snap')
     patch({ date: next })
-  }
-
-  const repeat = (label: string, offsets: number[]) => {
-    const base = parseISO(draft.date)
-    const { id: _id, ...rest } = draft
-    for (const offset of offsets) {
-      addEvent({
-        ...rest,
-        date: iso(addDays(base, offset)),
-        checklist: (draft.checklist ?? []).map((item) => ({
-          ...item,
-          id: crypto.randomUUID(),
-          done: false,
-        })),
-      })
-    }
-    haptic('success')
-    notify(`Repetido ${label}`)
   }
 
   const toggleItem = (id: string, done: boolean) => {
@@ -143,11 +138,23 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
     haptic('light')
   }
 
+  const removeDay = () => {
+    const undo = deleteOccurrence(draft.id)
+    haptic('error')
+    onClose()
+    notify('Día eliminado de la serie', 'Deshacer', () => undo?.())
+  }
+
   const remove = () => {
+    if (isRepeating(draft) && !confirmDelete) {
+      haptic('warning')
+      setConfirmDelete(true)
+      return
+    }
     const removed = deleteEvent(draft.id)
     haptic('error')
     onClose()
-    notify('Evento eliminado', 'Deshacer', () => {
+    notify(isRepeating(draft) ? 'Serie eliminada' : 'Evento eliminado', 'Deshacer', () => {
       if (removed) restoreEvent(removed)
     })
   }
@@ -252,38 +259,65 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
               </p>
             )}
 
+            {isRepeating(draft) && (
+              <p className="sheet__series">
+                <Repeat2 size={14} strokeWidth={1.8} aria-hidden="true" />
+                <span>Los cambios afectan a toda la serie</span>
+                <button
+                  type="button"
+                  className="move"
+                  onClick={() => {
+                    const single = detachOccurrence(draft.id)
+                    if (!single) return
+                    haptic('snap')
+                    onSelect(single.id)
+                    notify('Este día ya va por su cuenta')
+                  }}
+                >
+                  Solo este día
+                </button>
+              </p>
+            )}
+
             <div className="sheet__facts">
-              <label className="fact">
+              <button
+                type="button"
+                className="fact fact--button"
+                aria-expanded={open === 'date'}
+                onClick={() => {
+                  haptic('selection')
+                  setOpen((value) => (value === 'date' ? null : 'date'))
+                }}
+              >
                 <CalendarDays size={16} strokeWidth={1.7} aria-hidden="true" />
                 <span className="fact__body">
                   <span className="fact__label">Fecha</span>
-                  <input
-                    type="date"
-                    value={draft.date}
-                    onChange={(e) => e.target.value && patch({ date: e.target.value })}
-                  />
+                  <span className="fact__value">{fmtDateLong(parseISO(draft.date))}</span>
                 </span>
-              </label>
-              <label className="fact">
+              </button>
+              <button
+                type="button"
+                className="fact fact--button"
+                aria-expanded={open === 'time'}
+                onClick={() => {
+                  haptic('selection')
+                  setOpen((value) => (value === 'time' ? null : 'time'))
+                }}
+              >
                 <Clock3 size={16} strokeWidth={1.7} aria-hidden="true" />
                 <span className="fact__body">
                   <span className="fact__label">
                     Hora · termina a las {fmtTime(draft.start + draft.duration)}
                   </span>
                   <span className="fact__inline">
-                    <input
-                      type="time"
-                      value={fmtTime(draft.start)}
-                      onChange={(e) => {
-                        const [h, m] = e.target.value.split(':').map(Number)
-                        if (!Number.isNaN(h)) patch({ start: h * 60 + (m || 0) })
-                      }}
-                    />
+                    <span className="fact__value">{fmtTime(draft.start)}</span>
                     <span className="fact__dur">{fmtDuration(draft.duration)}</span>
                   </span>
                 </span>
-              </label>
+              </button>
             </div>
+            {open === 'date' && <DayStrip date={draft.date} onChange={(date) => patch({ date })} />}
+            {open === 'time' && <TimeWheels minutes={draft.start} onChange={(start) => patch({ start })} />}
 
             <div className="sheet__section">
               <span className="sheet__label">Duración</span>
@@ -336,29 +370,51 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
               <span className="sheet__label">
                 <Repeat2 size={13} strokeWidth={1.8} aria-hidden="true" /> Repetir
               </span>
-              <div className="move-chips">
-                <button
-                  type="button"
-                  className="move move--solid"
-                  onClick={() => repeat('mañana también', [1])}
-                >
-                  Al día siguiente
-                </button>
-                <button
-                  type="button"
-                  className="move move--solid"
-                  onClick={() => repeat('el resto de la semana', restOfWeek(draft.date))}
-                  disabled={restOfWeek(draft.date).length === 0}
-                >
-                  Resto de la semana
-                </button>
-                <button
-                  type="button"
-                  className="move move--solid"
-                  onClick={() => repeat('4 semanas más', [7, 14, 21, 28])}
-                >
-                  4 semanas
-                </button>
+              <div className="dur-chips">
+                {REPEAT_OPTIONS.map((option) => {
+                  const active = (draft.repeat ?? 'none') === option.id
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`dur ${active ? 'is-active' : ''}`}
+                      aria-pressed={active}
+                      onClick={() => {
+                        if (active) return
+                        haptic('selection')
+                        patch({ repeat: option.id, repeatUntil: option.id === 'none' ? null : draft.repeatUntil })
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="sheet__section">
+              <span className="sheet__label">
+                <Bell size={13} strokeWidth={1.8} aria-hidden="true" /> Aviso
+              </span>
+              <div className="dur-chips">
+                {REMIND_OPTIONS.map((option) => {
+                  const active = (draft.remind ?? null) === option.minutes
+                  return (
+                    <button
+                      key={option.label}
+                      type="button"
+                      className={`dur ${active ? 'is-active' : ''}`}
+                      aria-pressed={active}
+                      onClick={() => {
+                        haptic('selection')
+                        patch({ remind: option.minutes })
+                        if (option.minutes !== null) void askReminderPermission()
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
@@ -526,9 +582,14 @@ export function EventSheet({ event, onClose, onSelect }: Props) {
         </div>
 
         <footer className="sheet__foot">
+          {confirmDelete && (
+            <button type="button" className="btn btn--ghost" onClick={removeDay}>
+              Solo este día
+            </button>
+          )}
           <button type="button" className="btn btn--danger-ghost" onClick={remove}>
             <Trash2 size={15} strokeWidth={1.8} aria-hidden="true" />
-            Eliminar
+            {confirmDelete ? 'Toda la serie' : 'Eliminar'}
           </button>
           <div className="sheet__footright">
             <AvatarStack names={draft.attendees ?? []} max={3} />

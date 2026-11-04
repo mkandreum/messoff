@@ -18,7 +18,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "test:api": "cross-env NODE_ENV=test node --env-file-if-exists=.env --import tsx --test server/test/api.test.ts server/test/teams.test.ts",
+    "test:api": "cross-env NODE_ENV=test node --env-file-if-exists=.env --import tsx --test server/test/api.test.ts server/test/teams.test.ts server/test/calendar.test.ts",
+    "test:unit": "node --import tsx --test src/lib/parse.test.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
