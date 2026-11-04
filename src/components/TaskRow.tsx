@@ -213,6 +213,7 @@ export function TaskRow({ task, onToggle, onSchedule, onDelete, onUpdate, showTa
               </span>
             )}
             {team && <span className="task__who">{assignee ?? 'Sin asignar'}</span>}
+            {task.status === 'doing' && <span className="task__doing">En curso</span>}
           </span>
         </button>
 

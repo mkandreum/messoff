@@ -64,6 +64,8 @@ export function toApiTask(task: TaskWithPeople) {
     due: task.due,
     tag: task.tag,
     done: task.done,
+    // Las apps antiguas solo tocan `done`: nunca se contradicen.
+    status: task.done ? 'done' : task.status === 'done' ? 'todo' : task.status,
     teamId: task.teamId,
     assigneeId: task.assigneeId,
     assigneeName: task.assignee?.name ?? null,

@@ -60,7 +60,8 @@ export function createTasksRouter(prisma: PrismaClient) {
             title: body.title,
             due: body.due ?? null,
             tag: body.tag ?? 'personal',
-            done: body.done ?? false,
+            done: body.status ? body.status === 'done' : (body.done ?? false),
+            status: body.status ?? (body.done ? 'done' : 'todo'),
             teamId,
             assigneeId,
           },
@@ -104,9 +105,19 @@ export function createTasksRouter(prisma: PrismaClient) {
       if (!teamId || (teamId !== existing.teamId && body.assigneeId === undefined)) assigneeId = null
       if (teamId && assigneeId) await assertMember(teamId, assigneeId, 'Esa persona no está en el equipo.')
 
+      // El estado manda; quien solo cambia `done` lo mueve entre pendiente y hecha.
+      const stateFields = body.status
+        ? { status: body.status, done: body.status === 'done' }
+        : body.done === undefined
+          ? {}
+          : {
+              done: body.done,
+              status: body.done ? 'done' : existing.status === 'done' ? 'todo' : existing.status,
+            }
+
       const task = await prisma.task.update({
         where: { id: existing.id },
-        data: { ...body, teamId, assigneeId },
+        data: { ...body, ...stateFields, teamId, assigneeId },
         include: taskInclude,
       })
       res.json({ task: toApiTask(task) })
@@ -174,7 +185,7 @@ export function createTasksRouter(prisma: PrismaClient) {
           })
           const updatedTask = await prisma.task.update({
             where: { id: task.id },
-            data: { done: true },
+            data: { done: true, status: 'done' },
             include: taskInclude,
           })
           return res.status(201).json({

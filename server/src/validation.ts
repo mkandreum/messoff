@@ -100,6 +100,9 @@ export const eventPatchSchema = z
     message: 'No hay cambios que guardar',
   })
 
+export const TASK_STATUSES = ['todo', 'doing', 'done'] as const
+const taskStatus = z.enum(TASK_STATUSES, { message: 'Estado no válido' })
+
 export const taskInputSchema = z.object({
   id: z.string().uuid('El identificador de la tarea no es válido').optional(),
   title: z.string().trim().min(1, 'La tarea necesita un título').max(200),
@@ -108,6 +111,7 @@ export const taskInputSchema = z.object({
   done: z.boolean().optional(),
   teamId: z.string().uuid().nullable().optional(),
   assigneeId: z.string().uuid().nullable().optional(),
+  status: taskStatus.optional(),
 })
 
 export const taskPatchSchema = z
@@ -118,6 +122,7 @@ export const taskPatchSchema = z
     done: z.boolean().optional(),
     teamId: z.string().uuid().nullable().optional(),
     assigneeId: z.string().uuid().nullable().optional(),
+    status: taskStatus.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'No hay cambios que guardar',

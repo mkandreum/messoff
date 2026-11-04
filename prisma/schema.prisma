@@ -134,6 +134,8 @@ model Task {
   due       String?
   tag       String   @default("personal")
   done      Boolean  @default(false)
+  /// todo | doing | done; `done` sigue a este valor
+  status    String   @default("todo")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

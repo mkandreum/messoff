@@ -7,6 +7,7 @@ import { fmtTime, iso, parseISO, relativeDay } from '../lib/date'
 import { haptic } from '../lib/haptics'
 import { usePlanner } from '../state'
 import { CalendarPicker } from './CalendarPicker'
+import { TaskBoard } from './TaskBoard'
 import { AssigneePicker, TaskRow } from './TaskRow'
 
 type Filter = 'todas' | 'hoy' | 'semana' | 'hechas'
@@ -34,6 +35,22 @@ export function TasksView() {
   } = usePlanner()
   // Qué tareas se ven: todas, las mías, las personales o las de un equipo.
   const [scope, setScope] = useState<string>('todas')
+  const [layout, setLayout] = useState<'lista' | 'tablero'>(() => {
+    try {
+      return localStorage.getItem('messoff.tasksLayout') === 'tablero' ? 'tablero' : 'lista'
+    } catch {
+      return 'lista'
+    }
+  })
+  const chooseLayout = (next: 'lista' | 'tablero') => {
+    haptic('selection')
+    setLayout(next)
+    try {
+      localStorage.setItem('messoff.tasksLayout', next)
+    } catch {
+      /* almacenamiento no disponible */
+    }
+  }
   const [teamId, setTeamId] = useState<string | null>(null)
   const [assigneeId, setAssigneeId] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('todas')
@@ -194,7 +211,28 @@ export function TasksView() {
             </div>
           )}
 
-          <div className="filters" role="tablist" aria-label="Filtrar tareas">
+          <div className="task-scope" role="group" aria-label="Cómo ver las tareas">
+            <button
+              type="button"
+              className={`chip ${layout === 'lista' ? 'is-active' : ''}`}
+              aria-pressed={layout === 'lista'}
+              onClick={() => chooseLayout('lista')}
+            >
+              Lista
+            </button>
+            <button
+              type="button"
+              className={`chip ${layout === 'tablero' ? 'is-active' : ''}`}
+              aria-pressed={layout === 'tablero'}
+              onClick={() => chooseLayout('tablero')}
+            >
+              Tablero
+            </button>
+          </div>
+
+          {layout === 'tablero' && <TaskBoard tasks={scoped} onDelete={remove} />}
+
+          {layout === 'lista' && <div className="filters" role="tablist" aria-label="Filtrar tareas">
             {FILTERS.map((item) => {
               const active = filter === item.id
               return (
@@ -222,9 +260,9 @@ export function TasksView() {
                 </button>
               )
             })}
-          </div>
+          </div>}
 
-          <div className="tasks tasks--full">
+          {layout === 'lista' && <div className="tasks tasks--full">
             {groups.length === 0 && (
               <div className="empty">
                 <span className="empty__mark" aria-hidden="true">✓</span>
@@ -257,7 +295,7 @@ export function TasksView() {
                 </AnimatePresence>
               </section>
             ))}
-          </div>
+          </div>}
 
           <footer className="tasksview__foot">
             <div className="progress" aria-hidden="true">

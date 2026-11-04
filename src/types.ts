@@ -32,12 +32,15 @@ export type CalEvent = {
   remind?: number | null
 }
 
+export type TaskStatus = 'todo' | 'doing' | 'done'
+
 export type Task = {
   id: string
   title: string
   due: string | null
   tag: Category
   done: boolean
+  status?: TaskStatus
   /** Si es de un equipo, la ven y editan todos sus miembros. */
   teamId?: string | null
   assigneeId?: string | null

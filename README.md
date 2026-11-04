@@ -347,3 +347,5 @@ Las pruebas del analizador usan `src/lib/parse-cases.json`, idéntico al de la A
 ## Tareas de equipo
 
 Una tarea puede vivir en un equipo y tener a alguien asignado. La ven y editan todos sus miembros; solo quien la creó puede cambiarla de sitio. En «Hoy» y en los contadores no aparecen las que tiene asignadas otra persona. Al salir de un equipo, las tareas que creaste vuelven a ser personales y las que tenías asignadas quedan sin asignar.
+
+En la vista «Tablero», las tareas se organizan en «Por hacer», «En curso» y «Hecha», y se arrastran entre columnas. El campo `done` sigue existiendo y va a la par de `status`, para que las versiones antiguas de la APK sigan funcionando.

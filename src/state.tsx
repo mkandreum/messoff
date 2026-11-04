@@ -27,7 +27,7 @@ import { useAuth } from './auth'
 import { haptic, setHapticsEnabled as applyHaptics } from './lib/haptics'
 import { LoadError, Splash } from './components/Loading'
 
-type TaskPatch = Partial<Pick<Task, 'title' | 'due' | 'tag' | 'done' | 'teamId' | 'assigneeId'>>
+type TaskPatch = Partial<Pick<Task, 'title' | 'due' | 'tag' | 'done' | 'status' | 'teamId' | 'assigneeId'>>
 type TaskPlace = Pick<Task, 'teamId' | 'assigneeId'>
 
 type TeamsPayload = { teams: Team[]; invitations: Invitation[] }
@@ -581,6 +581,7 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
         due,
         tag,
         done: false,
+        status: 'todo',
         teamId: place?.teamId ?? null,
         assigneeId: place?.assigneeId ?? null,
         assigneeName: personName(place?.teamId, place?.assigneeId),
@@ -606,6 +607,11 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       if (!previous) return
       if (patch.title !== undefined && !patch.title.trim()) return
       const next = { ...previous, ...patch }
+      // El estado y `done` siempre van a la par.
+      if (patch.status) next.done = patch.status === 'done'
+      else if (patch.done !== undefined) {
+        next.status = patch.done ? 'done' : previous.status === 'done' ? 'todo' : previous.status
+      }
       // Sin equipo no hay a quién asignarla.
       if (!next.teamId) next.assigneeId = null
       next.assigneeName = personName(next.teamId, next.assigneeId)
