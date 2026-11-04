@@ -13,6 +13,7 @@ import { createEventsRouter } from './routes/events'
 import { createTasksRouter } from './routes/tasks'
 import { createFocusRouter } from './routes/focus'
 import { createBootstrapRouter } from './routes/bootstrap'
+import { createCalendarRouter } from './routes/calendar'
 import { createTeamsRouter } from './routes/teams'
 
 export function createApp(prisma: PrismaClient) {
@@ -58,6 +59,7 @@ export function createApp(prisma: PrismaClient) {
   app.use('/api/tasks', createTasksRouter(prisma))
   app.use('/api/teams', createTeamsRouter(prisma))
   app.use('/api/focus-sessions', createFocusRouter(prisma))
+  app.use('/api/calendar', createCalendarRouter(prisma))
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Ruta no encontrada', code: 'NOT_FOUND' })

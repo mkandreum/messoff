@@ -57,6 +57,10 @@ export function createEventsRouter(prisma: PrismaClient) {
             note: event.note ?? '',
             attendees: event.attendees ?? [],
             teamId: event.teamId ?? null,
+            repeat: event.repeat ?? 'none',
+            repeatUntil: event.repeatUntil ?? null,
+            repeatSkip: event.repeatSkip ?? [],
+            remind: event.remind ?? null,
             checklist: {
               create: checklist.map((item, index) => ({
                 id: item.id ?? uid(),

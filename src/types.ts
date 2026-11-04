@@ -6,6 +6,8 @@ export type ChecklistItem = {
   done: boolean
 }
 
+export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly'
+
 export type CalEvent = {
   id: string
   title: string
@@ -21,6 +23,13 @@ export type CalEvent = {
   teamId?: string | null
   authorId?: string | null
   authorName?: string | null
+  repeat?: RepeatRule
+  /** Último día de la serie (YYYY-MM-DD) o null si no termina. */
+  repeatUntil?: string | null
+  /** Días de la serie que no se celebran. */
+  repeatSkip?: string[]
+  /** Minutos de antelación del aviso; null si no avisa. */
+  remind?: number | null
 }
 
 export type Task = {

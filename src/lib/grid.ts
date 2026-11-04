@@ -1,9 +1,9 @@
-/** Rango visible del calendario: de 7:00 a 23:00. */
-export const DAY_START = 7 * 60
-export const DAY_END = 23 * 60
+/** Rango visible del calendario: el día entero. */
+export const DAY_START = 0
+export const DAY_END = 24 * 60
 export const TOTAL_MIN = DAY_END - DAY_START
-export const SLOT = 30
-export const HOURS = Array.from({ length: (DAY_END - DAY_START) / 60 }, (_, i) => 7 + i)
+export const SLOT = 15
+export const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 /** Jornada "útil" para huecos y carga del día. */
 export const WORK_START = 8 * 60

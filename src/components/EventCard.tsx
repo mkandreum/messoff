@@ -1,8 +1,10 @@
 import { m } from 'motion/react'
 import { MapPin } from 'lucide-react'
 import type { CalEvent } from '../types'
+import { Repeat2 } from 'lucide-react'
 import { fmtTime } from '../lib/date'
 import { heightPct, topPct } from '../lib/grid'
+import { isRepeating, type Placement } from '../lib/recurrence'
 import { usePlanner } from '../state'
 import { teamById, teamHex } from '../lib/teams'
 import { AvatarStack } from './ui'
@@ -14,7 +16,8 @@ type Props = {
   onPressStart: (e: React.PointerEvent<HTMLElement>, event: CalEvent) => void
   suppressClick: () => boolean
   origin?: boolean
-  stacked?: boolean
+  placement?: Placement
+  onResizeStart?: (e: React.PointerEvent<HTMLElement>, event: CalEvent) => void
 }
 
 export function EventCard({
@@ -24,7 +27,8 @@ export function EventCard({
   onPressStart,
   suppressClick,
   origin,
-  stacked,
+  placement = { column: 0, columns: 1 },
+  onResizeStart,
 }: Props) {
   const { teams, theme } = usePlanner()
   const team = teamById(teams, event.teamId)
@@ -48,8 +52,15 @@ export function EventCard({
         tight ? 'event--tight' : ''
       } ${!showMeta ? 'event--dense' : ''} ${showNote ? 'event--hasnote' : ''} ${
         origin ? 'is-origin' : ''
-      } ${stacked ? 'event--stacked' : ''}`}
-      style={{ top: `${topPct(event.start)}%`, height: `calc(${heightPct(event.duration, event.start)}% - 5px)` }}
+      } ${placement.columns > 2 ? 'event--narrow' : ''}`}
+      style={{
+        top: `${topPct(event.start)}%`,
+        height: `calc(${heightPct(event.duration, event.start)}% - 5px)`,
+        // Los solapados van lado a lado, cada uno en su columna.
+        left: `calc(${(placement.column / placement.columns) * 100}% + 3px)`,
+        right: 'auto',
+        width: `calc(${100 / placement.columns}% - 5px)`,
+      }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -94,6 +105,7 @@ export function EventCard({
           <span className="event__top">
             <span className="event__time">{fmtTime(event.start)}</span>
             <span className="event__dur">{durLabel}</span>
+            {isRepeating(event) && <Repeat2 size={10} strokeWidth={2} aria-label="Se repite" />}
             {event.checklist?.length ? (
               <span className="event__check">
                 {event.checklist.filter((c) => c.done).length}/{event.checklist.length}
@@ -112,6 +124,16 @@ export function EventCard({
             <AvatarStack names={event.attendees ?? []} max={3} />
           ) : null}
         </>
+      )}
+      {onResizeStart && (
+        <span
+          className="event__resize"
+          data-resize-handle
+          aria-hidden="true"
+          title="Tira para cambiar la duración"
+          onPointerDown={(e) => onResizeStart(e, event)}
+          onClick={(e) => e.stopPropagation()}
+        />
       )}
       <span className="sr-only">
         {team ? `. Equipo ${team.name}` : ''}. Mantén pulsado para mover.

@@ -16,6 +16,8 @@ model User {
   tokenVersion Int      @default(0)
   theme        String   @default("paper")
   haptics      Boolean  @default(true)
+  /// Llave del enlace ICS privado; null si no hay enlace
+  icsToken     String?  @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -85,6 +87,14 @@ model Event {
   /// Si es de un equipo, lo ven y editan todos sus miembros
   teamId   String?
   team     Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  /// none | daily | weekdays | weekly | monthly
+  repeat      String   @default("none")
+  /// Último día de la serie (YYYY-MM-DD) o null si no termina
+  repeatUntil String?
+  /// Días de la serie que no se celebran
+  repeatSkip  String[] @default([])
+  /// Minutos de antelación del aviso; null si no avisa
+  remind      Int?
 
   checklist ChecklistItem[]
 

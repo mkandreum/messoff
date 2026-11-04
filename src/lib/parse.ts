@@ -37,6 +37,32 @@ export type ParsedEvent = {
   matchedTime: boolean
 }
 
+const MONTH_WORDS = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+]
+
+/** Palabra completa, también con acentos y eñes (\\b no los entiende). */
+const word = (source: string) => new RegExp(`(?<![\\p{L}\\d])${source}(?![\\p{L}\\d])`, 'iu')
+
+const atDay = (day: number, month: number, year: number | null, base: Date) => {
+  const date = new Date(year ?? base.getFullYear(), month - 1, day, 12)
+  if (date.getMonth() !== month - 1) return null
+  // Sin año, una fecha ya pasada es la del año que viene.
+  if (year === null && iso(date) < iso(base)) date.setFullYear(date.getFullYear() + 1)
+  return date
+}
+
+/** Pasa a 24 horas según el momento del día: "9 de la noche" son las 21:00. */
+const withPeriod = (hour: number, period: string) => {
+  if (period === 'tarde') return hour >= 1 && hour <= 11 ? hour + 12 : hour
+  if (period === 'noche') {
+    if (hour === 12) return 0
+    return hour >= 7 && hour <= 11 ? hour + 12 : hour
+  }
+  return hour === 12 ? 0 : hour
+}
+
 export function parseQuickAdd(
   raw: string,
   now = new Date(),
@@ -47,39 +73,9 @@ export function parseQuickAdd(
   let matchedTime = false
   let dayOffset = 0
   let start = fallback?.start ?? 0
+  let absolute: Date | null = null
+  let sameWeekday = false
   const base = fallback?.date ?? startOfDay(now)
-
-  // Relative days first (longest match wins).
-  const relative: { re: RegExp; offset: number }[] = [
-    { re: /\bpasado\s+mañana\b/i, offset: 2 },
-    { re: /\bpasado\s+manana\b/i, offset: 2 },
-    { re: /\bmañana\b/i, offset: 1 },
-    { re: /\bmanana\b/i, offset: 1 },
-    { re: /\bhoy\b/i, offset: 0 },
-  ]
-  for (const { re, offset } of relative) {
-    if (re.test(text)) {
-      dayOffset = offset
-      matchedDay = true
-      text = text.replace(re, ' ')
-      break
-    }
-  }
-
-  if (!matchedDay) {
-    for (const [word, dow] of Object.entries(WEEKDAY_WORDS)) {
-      const re = new RegExp(`\\b${word}\\b`, 'i')
-      if (re.test(text)) {
-        const currentDow = base.getDay()
-        let diff = (dow - currentDow + 7) % 7
-        if (diff === 0) diff = 0
-        dayOffset = diff
-        matchedDay = true
-        text = text.replace(re, ' ')
-        break
-      }
-    }
-  }
 
   const takeTime = (hours: number, minutes: number) => {
     if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
@@ -88,17 +84,92 @@ export function parseQuickAdd(
     }
   }
 
-  let match = text.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/)
+  // Primero la hora con su momento: si no, "de la mañana" se leería como otro día.
+  let match = text.match(
+    word('(?:a\\s+las?\\s+)?([01]?\\d|2[0-3])(?:[:.]([0-5]\\d))?(?:\\s+y\\s+(media|cuarto))?\\s+de\\s+la\\s+(mañana|manana|tarde|noche)'),
+  )
   if (match) {
-    takeTime(Number(match[1]), Number(match[2]))
+    const extra = match[3]?.toLowerCase() === 'media' ? 30 : match[3] ? 15 : 0
+    takeTime(withPeriod(Number(match[1]), match[4].toLowerCase()), Number(match[2] ?? 0) + extra)
+    text = text.replace(match[0], ' ')
+  }
+  let periodHour: number | null = null
+  match = text.match(word('por\\s+la\\s+(mañana|manana|tarde|noche)'))
+  if (match) {
+    const period = match[1].toLowerCase()
+    periodHour = period === 'tarde' ? 16 : period === 'noche' ? 21 : 9
     text = text.replace(match[0], ' ')
   }
 
+  // Fechas concretas: "12 de noviembre", "12/11", "12/11/2026".
+  match = text.match(word(`(?:el\\s+)?(\\d{1,2})\\s+de\\s+(${MONTH_WORDS.join('|')})(?:\\s+(?:de\\s+)?(\\d{4}))?`))
+  if (match) {
+    const date = atDay(Number(match[1]), MONTH_WORDS.indexOf(match[2].toLowerCase()) + 1, match[3] ? Number(match[3]) : null, base)
+    if (date) {
+      absolute = date
+      matchedDay = true
+      text = text.replace(match[0], ' ')
+    }
+  }
+  if (!absolute) {
+    match = text.match(word('(?:el\\s+)?(\\d{1,2})/(\\d{1,2})(?:/(\\d{4}))?'))
+    if (match) {
+      const date = atDay(Number(match[1]), Number(match[2]), match[3] ? Number(match[3]) : null, base)
+      if (date) {
+        absolute = date
+        matchedDay = true
+        text = text.replace(match[0], ' ')
+      }
+    }
+  }
+
+  if (!matchedDay) {
+    // Relative days first (longest match wins).
+    const relative: { re: RegExp; offset: number }[] = [
+      { re: word('pasado\\s+mañana'), offset: 2 },
+      { re: word('pasado\\s+manana'), offset: 2 },
+      { re: word('mañana'), offset: 1 },
+      { re: word('manana'), offset: 1 },
+      { re: word('hoy'), offset: 0 },
+    ]
+    for (const { re, offset } of relative) {
+      if (re.test(text)) {
+        dayOffset = offset
+        matchedDay = true
+        text = text.replace(re, ' ')
+        break
+      }
+    }
+  }
+
+  if (!matchedDay) {
+    for (const [name, dow] of Object.entries(WEEKDAY_WORDS)) {
+      const hit = text.match(word(`(?:(próximo|proximo|este|el)\\s+)?${name}`))
+      if (!hit) continue
+      dayOffset = (dow - base.getDay() + 7) % 7
+      if (dayOffset === 0 && hit[1]?.toLowerCase().startsWith('pr')) dayOffset = 7
+      sameWeekday = dayOffset === 0
+      matchedDay = true
+      text = text.replace(hit[0], ' ')
+      break
+    }
+  }
+
   if (!matchedTime) {
-    match = text.match(/\ba\s+las\s+([01]?\d|2[0-3])\b(?:\s+y\s+(media|cuarto))?/i)
+    match = text.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/)
+    if (match) {
+      takeTime(Number(match[1]), Number(match[2]))
+      text = text.replace(match[0], ' ')
+    }
+  }
+
+  if (!matchedTime) {
+    match = text.match(/\ba\s+las?\s+([01]?\d|2[0-3])\b(?:\s+y\s+(media|cuarto))?/i)
     if (match) {
       const extra = match[2]?.toLowerCase() === 'media' ? 30 : match[2] ? 15 : 0
-      takeTime(Number(match[1]), extra)
+      // "A las 5" en una agenda son casi siempre las 17:00.
+      const hour = Number(match[1])
+      takeTime(hour >= 1 && hour <= 6 ? hour + 12 : hour, extra)
       text = text.replace(match[0], ' ')
     }
   }
@@ -111,13 +182,7 @@ export function parseQuickAdd(
     }
   }
 
-  if (!matchedTime) {
-    match = text.match(/\b([1-9]|1[0-2])\s*(?:de la\s+)?(tarde|noche)\b/i)
-    if (match) {
-      takeTime(Number(match[1]) + 12, 0)
-      text = text.replace(match[0], ' ')
-    }
-  }
+  if (!matchedTime && periodHour !== null) takeTime(periodHour, 0)
 
   if (!matchedTime && !fallback) {
     const next = Math.ceil((now.getHours() * 60 + now.getMinutes() + 30) / 30) * 30
@@ -132,13 +197,18 @@ export function parseQuickAdd(
     }
   }
 
+  // "Miércoles 09:00" escrito un miércoles a mediodía es el de la semana que viene.
+  if (sameWeekday && matchedTime && iso(base) === iso(now) && start <= now.getHours() * 60 + now.getMinutes()) {
+    dayOffset = 7
+  }
+
   const title = text
     .replace(/\s+/g, ' ')
     .replace(/^[\s,·—-]+|[\s,·—-]+$/g, '')
     .replace(/^(el|la|los|las|para)\s+/i, '')
     .trim()
   const finalTitle = title ? title[0].toUpperCase() + title.slice(1) : 'Nuevo evento'
-  const date = addDays(base, dayOffset)
+  const date = absolute ?? addDays(base, dayOffset)
 
   return {
     title: finalTitle,

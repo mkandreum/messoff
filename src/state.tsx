@@ -21,6 +21,8 @@ import type {
   User,
 } from './types'
 import { api, ApiError } from './lib/api'
+import { iso, addDays } from './lib/date'
+import { daysBetween, expandEvents, isRepeating, occurrenceDate, occurrenceId, seriesId, shiftDay } from './lib/recurrence'
 import { useAuth } from './auth'
 import { haptic, setHapticsEnabled as applyHaptics } from './lib/haptics'
 import { LoadError, Splash } from './components/Loading'
@@ -48,8 +50,13 @@ type PlannerValue = {
   setTheme: (theme: Theme) => void
   setHaptics: (on: boolean) => void
   addEvent: (event: Omit<CalEvent, 'id'>) => CalEvent
-  saveEvent: (event: CalEvent) => void
-  moveEvent: (id: string, date: string, start: number) => CalEvent | undefined
+  /** Devuelve el id con el que queda: cambia si se mueve de día una aparición. */
+  saveEvent: (event: CalEvent) => string
+  /** Devuelven cómo deshacer el cambio, o undefined si no cambió nada. */
+  moveEvent: (id: string, date: string, start: number) => (() => void) | undefined
+  resizeEvent: (id: string, duration: number) => (() => void) | undefined
+  detachOccurrence: (id: string) => CalEvent | undefined
+  deleteOccurrence: (id: string) => (() => void) | undefined
   duplicateEvent: (id: string) => Promise<CalEvent | undefined>
   deleteEvent: (id: string) => CalEvent | undefined
   restoreEvent: (event: CalEvent) => void
@@ -110,6 +117,8 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
   const saveTimers = useRef<Map<string, number>>(new Map())
   const inflight = useRef(0)
   const lastSync = useRef(0)
+  const moveRef = useRef<PlannerValue['moveEvent'] | null>(null)
+  const resizeRef = useRef<PlannerValue['resizeEvent'] | null>(null)
   const eventsRef = useRef(events)
   const tasksRef = useRef(tasks)
   eventsRef.current = events
@@ -327,18 +336,45 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
     [fail, track],
   )
 
+  /** El evento tal como se ve: la serie o una de sus apariciones. */
+  const findEvent = useCallback((id: string) => {
+    const base = eventsRef.current.find((event) => event.id === seriesId(id))
+    const day = occurrenceDate(id)
+    return base && day ? { ...base, id, date: day } : base
+  }, [])
+
+  const dropTimer = (id: string) => {
+    const timer = saveTimers.current.get(id)
+    if (timer) window.clearTimeout(timer)
+    saveTimers.current.delete(id)
+  }
+
   const saveEvent = useCallback(
     (input: CalEvent) => {
-      const next = clampEvent(input)
+      const series = seriesId(input.id)
+      const base = eventsRef.current.find((event) => event.id === series)
+      const occurrence = occurrenceDate(input.id)
+      let merged = input
+      if (occurrence && base) {
+        merged = isRepeating(input)
+          ? {
+              ...input,
+              id: series,
+              // Mover una aparición de día desplaza toda la serie lo mismo.
+              date: shiftDay(base.date, daysBetween(occurrence, input.date)),
+              repeatSkip: base.repeatSkip,
+            }
+          : { ...input, id: series, repeatSkip: [] }
+      }
+      const next = clampEvent(merged)
       setEvents((list) => list.map((event) => (event.id === next.id ? next : event)))
-      const timer = saveTimers.current.get(next.id)
-      if (timer) window.clearTimeout(timer)
+      dropTimer(series)
       const handle = window.setTimeout(() => {
-        saveTimers.current.delete(next.id)
+        saveTimers.current.delete(series)
         // Un título vacío no se envía: se guardará cuando el usuario escriba algo.
         if (!next.title.trim()) return
         void track(
-          api<{ event: CalEvent }>(`/events/${next.id}`, {
+          api<{ event: CalEvent }>(`/events/${series}`, {
             method: 'PATCH',
             body: next,
           }),
@@ -347,21 +383,95 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
           void loadData()
         })
       }, 350)
-      saveTimers.current.set(next.id, handle)
+      saveTimers.current.set(series, handle)
+      return occurrence && isRepeating(next) ? occurrenceId(series, input.date, next.date) : series
     },
     [fail, loadData, track],
   )
 
-  const moveEvent = useCallback(
-    (id: string, date: string, start: number) => {
-      const previous = eventsRef.current.find((event) => event.id === id)
+  const setSkipped = useCallback(
+    (series: string, day: string, skipped: boolean) => {
+      const base = eventsRef.current.find((event) => event.id === series)
+      if (!base) return
+      const current = base.repeatSkip ?? []
+      const repeatSkip = skipped ? [...new Set([...current, day])] : current.filter((item) => item !== day)
+      setEvents((list) => list.map((event) => (event.id === series ? { ...event, repeatSkip } : event)))
+      void track(api(`/events/${series}`, { method: 'PATCH', body: { repeatSkip } })).catch((error) => {
+        setEvents((list) => list.map((event) => (event.id === series ? base : event)))
+        fail(error, 'No se pudo cambiar la serie')
+      })
+    },
+    [fail, track],
+  )
+
+  const deleteEvent = useCallback(
+    (id: string) => {
+      const series = seriesId(id)
+      const previous = eventsRef.current.find((event) => event.id === series)
       if (!previous) return undefined
-      if (previous.date === date && previous.start === start) return previous
+      dropTimer(series)
+      setEvents((list) => list.filter((event) => event.id !== series))
+      void track(api(`/events/${series}`, { method: 'DELETE' })).catch((error) => {
+        setEvents((list) => [...list, previous])
+        fail(error, 'No se pudo eliminar el evento')
+      })
+      return previous
+    },
+    [fail, track],
+  )
 
-      const timer = saveTimers.current.get(id)
-      if (timer) window.clearTimeout(timer)
-      saveTimers.current.delete(id)
+  /** Saca una aparición de su serie y la convierte en un evento suelto. */
+  const splitOff = useCallback(
+    (occurrence: CalEvent, edit: Partial<CalEvent>) => {
+      const series = seriesId(occurrence.id)
+      const day = occurrence.date
+      dropTimer(series)
+      setSkipped(series, day, true)
+      const { id: _id, ...rest } = occurrence
+      const single = addEvent({
+        ...rest,
+        ...edit,
+        repeat: 'none',
+        repeatUntil: null,
+        repeatSkip: [],
+        checklist: (occurrence.checklist ?? []).map((item) => ({ ...item, id: uid() })),
+      })
+      const undo = () => {
+        deleteEvent(single.id)
+        setSkipped(series, day, false)
+      }
+      return { single, undo }
+    },
+    [addEvent, deleteEvent, setSkipped],
+  )
 
+  const detachOccurrence = useCallback(
+    (id: string) => {
+      const occurrence = findEvent(id)
+      return occurrence ? splitOff(occurrence, {}).single : undefined
+    },
+    [findEvent, splitOff],
+  )
+
+  const deleteOccurrence = useCallback(
+    (id: string) => {
+      const occurrence = findEvent(id)
+      if (!occurrence) return undefined
+      const series = seriesId(id)
+      setSkipped(series, occurrence.date, true)
+      return () => setSkipped(series, occurrence.date, false)
+    },
+    [findEvent, setSkipped],
+  )
+
+  const moveEvent = useCallback(
+    (id: string, date: string, start: number): (() => void) | undefined => {
+      const previous = findEvent(id)
+      if (!previous) return undefined
+      if (previous.date === date && previous.start === start) return undefined
+      if (isRepeating(previous)) return splitOff(previous, { date, start }).undo
+
+      dropTimer(id)
       const next = clampEvent({ ...previous, date, start })
       setEvents((list) => list.map((event) => (event.id === id ? next : event)))
       void track(
@@ -373,44 +483,49 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
         setEvents((list) => list.map((event) => (event.id === id ? previous : event)))
         fail(error, 'No se pudo mover el evento')
       })
-      return previous
+      return () => {
+        moveRef.current?.(id, previous.date, previous.start)
+      }
     },
-    [fail, track],
+    [fail, findEvent, splitOff, track],
   )
+  moveRef.current = moveEvent
+
+  const resizeEvent = useCallback(
+    (id: string, duration: number): (() => void) | undefined => {
+      const previous = findEvent(id)
+      if (!previous || previous.duration === duration) return undefined
+      if (isRepeating(previous)) return splitOff(previous, { duration }).undo
+      dropTimer(id)
+      const next = clampEvent({ ...previous, duration })
+      setEvents((list) => list.map((event) => (event.id === id ? next : event)))
+      void track(api(`/events/${id}`, { method: 'PATCH', body: next })).catch((error) => {
+        setEvents((list) => list.map((event) => (event.id === id ? previous : event)))
+        fail(error, 'No se pudo cambiar la duración')
+      })
+      return () => {
+        resizeRef.current?.(id, previous.duration)
+      }
+    },
+    [fail, findEvent, splitOff, track],
+  )
+  resizeRef.current = resizeEvent
 
   const duplicateEvent = useCallback(
     async (id: string) => {
-      try {
-        const data = await track(
-          api<{ event: CalEvent }>(`/events/${id}/duplicate`, {
-            method: 'POST',
-          }),
-        )
-        setEvents((list) => [...list, data.event])
-        return data.event
-      } catch (error) {
-        fail(error, 'No se pudo duplicar el evento')
-        return undefined
-      }
-    },
-    [fail, track],
-  )
-
-  const deleteEvent = useCallback(
-    (id: string) => {
-      const previous = eventsRef.current.find((event) => event.id === id)
-      if (!previous) return undefined
-      const timer = saveTimers.current.get(id)
-      if (timer) window.clearTimeout(timer)
-      saveTimers.current.delete(id)
-      setEvents((list) => list.filter((event) => event.id !== id))
-      void track(api(`/events/${id}`, { method: 'DELETE' })).catch((error) => {
-        setEvents((list) => [...list, previous])
-        fail(error, 'No se pudo eliminar el evento')
+      const source = findEvent(id)
+      if (!source) return undefined
+      const { id: _id, ...rest } = source
+      return addEvent({
+        ...rest,
+        title: `${source.title} (copia)`,
+        repeat: 'none',
+        repeatUntil: null,
+        repeatSkip: [],
+        checklist: (source.checklist ?? []).map((item) => ({ ...item, id: uid(), done: false })),
       })
-      return previous
     },
-    [fail, track],
+    [addEvent, findEvent],
   )
 
   const restoreEvent = useCallback(
@@ -545,13 +660,14 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
     [deleteEvent, updateTask],
   )
 
-  const visibleEvents = useMemo(
-    () =>
-      hiddenCalendars.length
-        ? events.filter((event) => !hiddenCalendars.includes(event.teamId ?? 'me'))
-        : events,
-    [events, hiddenCalendars],
-  )
+  const visibleEvents = useMemo(() => {
+    const shown = hiddenCalendars.length
+      ? events.filter((event) => !hiddenCalendars.includes(event.teamId ?? 'me'))
+      : events
+    // Ventana en la que se expanden las series: de sobra para cualquier vista.
+    const today = new Date()
+    return expandEvents(shown, iso(addDays(today, -180)), iso(addDays(today, 730)))
+  }, [events, hiddenCalendars])
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalEvent[]>()
@@ -685,6 +801,9 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       addEvent,
       saveEvent,
       moveEvent,
+      resizeEvent,
+      detachOccurrence,
+      deleteOccurrence,
       duplicateEvent,
       deleteEvent,
       restoreEvent,
@@ -737,6 +856,9 @@ export function PlannerProvider({ user, children }: { user: User; children: Reac
       addEvent,
       saveEvent,
       moveEvent,
+      resizeEvent,
+      detachOccurrence,
+      deleteOccurrence,
       duplicateEvent,
       deleteEvent,
       restoreEvent,

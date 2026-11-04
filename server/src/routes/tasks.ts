@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client'
 import { requireAuth, type AuthedRequest } from '../auth'
 import { asyncHandler, HttpError } from '../errors'
 import { eventInclude, toApiEvent, toApiTask } from '../serializers'
+import { occursOn } from '../recurrence'
 import { addDays, today } from '../seed'
 import { parse, scheduleSchema, taskInputSchema, taskPatchSchema } from '../validation'
 
@@ -110,10 +111,11 @@ export function createTasksRouter(prisma: PrismaClient) {
 
       for (let offset = 0; offset < 14; offset += 1) {
         const date = addDays(firstDay, offset)
-        const existing = await prisma.event.findMany({
-          where: { userId: user.id, date },
-          select: { start: true, duration: true },
+        const candidates = await prisma.event.findMany({
+          where: { userId: user.id, OR: [{ date }, { repeat: { not: 'none' }, date: { lte: date } }] },
+          select: { date: true, start: true, duration: true, repeat: true, repeatUntil: true, repeatSkip: true },
         })
+        const existing = candidates.filter((event) => occursOn(event, date))
 
         for (let start = DAY_START; start + SLOT_MINUTES <= DAY_END; start += STEP) {
           const overlaps = existing.some(

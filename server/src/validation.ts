@@ -17,6 +17,15 @@ const checklistItem = z.object({
   done: z.boolean().optional(),
 })
 
+export const REPEATS = ['none', 'daily', 'weekdays', 'weekly', 'monthly'] as const
+
+const repeatFields = {
+  repeat: z.enum(REPEATS, { message: 'Repetición no válida' }).optional(),
+  repeatUntil: date.nullable().optional(),
+  repeatSkip: z.array(date).max(1000).optional(),
+  remind: z.number().int().min(0).max(40320).nullable().optional(),
+}
+
 export const registerSchema = z.object({
   name: z.string().trim().min(1, 'Escribe tu nombre').max(60, 'El nombre es demasiado largo'),
   email: z.string().trim().email('El email no es válido').max(254),
@@ -66,6 +75,7 @@ export const eventInputSchema = z
     attendees: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     checklist: z.array(checklistItem).max(50).optional(),
     teamId: z.string().uuid().nullable().optional(),
+    ...repeatFields,
   })
   .refine((value) => value.start + value.duration <= 1440, {
     message: 'El evento no puede terminar después de medianoche',
@@ -84,6 +94,7 @@ export const eventPatchSchema = z
     attendees: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     checklist: z.array(checklistItem).max(50).optional(),
     teamId: z.string().uuid().nullable().optional(),
+    ...repeatFields,
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'No hay cambios que guardar',

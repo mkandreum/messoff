@@ -14,7 +14,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { HapticKind } from '../types'
-import { ApiError } from '../lib/api'
+import { ApiError, api } from '../lib/api'
 import { HAPTIC_SUPPORTED, haptic } from '../lib/haptics'
 import { useFocusTrap } from '../lib/focus'
 import { useAuth } from '../auth'
@@ -230,6 +230,8 @@ export function SettingsMenu({
               </form>
               {profileError && <p className="settings__error">{profileError}</p>}
             </section>
+
+            <CalendarLink notify={notify} />
 
             <section className="settings__section">
               <p className="settings__label">Tema</p>
@@ -460,5 +462,78 @@ export function SettingsMenu({
         </>
       )}
     </AnimatePresence>
+  )
+}
+
+/** Enlace privado para ver esta agenda en Google Calendar, Apple u Outlook. */
+function CalendarLink({ notify }: { notify: (message: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api<{ url: string | null }>('/calendar/link')
+      .then((data) => setUrl(data.url))
+      .catch(() => undefined)
+  }, [])
+
+  const copy = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link)
+      haptic('success')
+      notify('Enlace copiado. Pégalo en Google Calendar: Añadir calendario › Desde URL.')
+    } catch {
+      setError('No se pudo copiar. Copia el enlace de arriba a mano.')
+    }
+  }
+  const create = async () => {
+    setError(null)
+    try {
+      const data = await api<{ url: string }>('/calendar/link', { method: 'POST', body: {} })
+      setUrl(data.url)
+      await copy(data.url)
+    } catch {
+      setError('No se pudo crear el enlace.')
+    }
+  }
+  const revoke = async () => {
+    setError(null)
+    try {
+      await api('/calendar/link', { method: 'DELETE' })
+      setUrl(null)
+      notify('Enlace desactivado')
+    } catch {
+      setError('No se pudo desactivar el enlace.')
+    }
+  }
+
+  return (
+    <section className="settings__section">
+      <p className="settings__label">Ver en otros calendarios</p>
+      <p className="settings__hint">
+        Tu agenda en Google Calendar, Apple u Outlook, solo de lectura. Quien tenga el enlace puede verla; Google
+        tarda unas horas en refrescarla.
+      </p>
+      {url && <input className="settings__input" readOnly value={url} aria-label="Enlace del calendario" onFocus={(e) => e.currentTarget.select()} />}
+      <div className="move-chips">
+        {url ? (
+          <>
+            <button type="button" className="move move--solid" onClick={() => void copy(url)}>
+              Copiar enlace
+            </button>
+            <button type="button" className="move" onClick={() => void create()}>
+              Cambiar enlace
+            </button>
+            <button type="button" className="move" onClick={() => void revoke()}>
+              Desactivar
+            </button>
+          </>
+        ) : (
+          <button type="button" className="move move--solid" onClick={() => void create()}>
+            Crear enlace
+          </button>
+        )}
+      </div>
+      {error && <p className="settings__error">{error}</p>}
+    </section>
   )
 }

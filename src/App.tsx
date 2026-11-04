@@ -16,6 +16,7 @@ import {
   weekRangeLabel,
 } from './lib/date'
 import { haptic } from './lib/haptics'
+import { useReminders } from './lib/reminders'
 import { teamHex } from './lib/teams'
 import { usePlanner } from './state'
 import { fmtClock, useFocusTimer } from './focusTimer'
@@ -117,6 +118,22 @@ export function App() {
       /* almacenamiento no disponible */
     }
   }, [calView])
+
+  useReminders(events)
+
+  // Una notificación pide abrir un evento: desde la pestaña abierta o al abrir una nueva.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('event')
+    if (fromUrl) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setSelectedId(fromUrl)
+    }
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'open-event') setSelectedId(String(e.data.eventId))
+    }
+    navigator.serviceWorker?.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
+  }, [])
 
   // Enlace de invitación: /?join=CODIGO une al equipo en cuanto hay sesión.
   const joined = useRef(false)
@@ -253,7 +270,7 @@ export function App() {
 
   // Deslizar a izquierda/derecha cambia de día o de mes (la semana ya hace scroll lateral).
   const onSwipeStart = (e: React.TouchEvent) => {
-    if (calView === 'semana' || e.touches.length !== 1) return
+    if (calView === 'semana' || calView === 'agenda' || e.touches.length !== 1) return
     const t = e.touches[0]
     swipe.current = { x: t.clientX, y: t.clientY, t: Date.now() }
   }
@@ -594,7 +611,7 @@ export function App() {
                           <MonthView anchor={anchor} onOpen={openEvent} onPickDay={pickDay} />
                         ) : calView === 'agenda' ? (
                           <AgendaView
-                            days={days}
+                            jumpTo={anchor}
                             onOpen={openEvent}
                             onSlotClick={(date, start) => openQuick({ date, start })}
                           />

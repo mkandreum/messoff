@@ -44,3 +44,9 @@ createRoot(document.getElementById('root')!).render(
     </MotionConfig>
   </StrictMode>,
 )
+
+if ('serviceWorker' in navigator && window.location.hostname !== 'localhost') {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('./sw.js').catch(() => undefined)
+  })
+}

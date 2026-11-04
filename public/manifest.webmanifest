@@ -1,0 +1,14 @@
+{
+  "name": "MessOff",
+  "short_name": "MessOff",
+  "description": "Tu semana, sin desorden.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f0ebe0",
+  "theme_color": "#f0ebe0",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

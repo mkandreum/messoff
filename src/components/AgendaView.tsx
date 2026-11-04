@@ -1,26 +1,73 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { m } from 'motion/react'
-import { ChevronDown, MapPin, Plus } from 'lucide-react'
+import { ChevronUp, MapPin, Plus, Repeat2 } from 'lucide-react'
 import type { CalEvent } from '../types'
 import { CATEGORY_LABEL } from '../data'
 import {
   MONTHS,
   WEEKDAYS,
+  addDays,
+  fmtDateMedium,
   fmtDuration,
+  fmtMonth,
   fmtTime,
   isToday,
   iso,
   nowMinutes,
+  startOfDay,
 } from '../lib/date'
+import { isRepeating } from '../lib/recurrence'
 import { teamById, teamHex } from '../lib/teams'
 import { haptic } from '../lib/haptics'
 import { usePlanner } from '../state'
 import { AvatarStack } from './ui'
 
 type Props = {
-  days: Date[]
+  /** Cambiarla lleva la lista hasta ese día. */
+  jumpTo: Date
   onOpen: (id: string) => void
   onSlotClick: (date: Date, start: number) => void
+}
+
+type Row =
+  | { kind: 'month'; key: string; first: Date }
+  | { kind: 'day'; key: string; day: Date; list: CalEvent[] }
+  | { kind: 'free'; key: string; from: Date; to: Date }
+
+/** Lista continua de días: los días sin nada se pliegan en una sola fila. */
+function buildRows(from: Date, count: number, byDate: Map<string, CalEvent[]>): Row[] {
+  const rows: Row[] = []
+  const todayKey = iso(new Date())
+  let month = ''
+  let freeFrom: Date | null = null
+  let previous = from
+  const closeFree = (to: Date) => {
+    if (freeFrom) rows.push({ kind: 'free', key: `f${iso(freeFrom)}`, from: freeFrom, to })
+    freeFrom = null
+  }
+  const openMonth = (day: Date) => {
+    const key = `${day.getFullYear()}-${day.getMonth()}`
+    if (key !== month) {
+      closeFree(previous)
+      month = key
+      rows.push({ kind: 'month', key: `m${key}`, first: day })
+    }
+  }
+  for (let i = 0; i < count; i += 1) {
+    const day = addDays(from, i)
+    const key = iso(day)
+    const list = byDate.get(key) ?? []
+    openMonth(day)
+    if (list.length === 0 && key !== todayKey) {
+      if (!freeFrom) freeFrom = day
+    } else {
+      closeFree(previous)
+      rows.push({ kind: 'day', key: `d${key}`, day, list })
+    }
+    previous = day
+  }
+  closeFree(previous)
+  return rows
 }
 
 function EventRow({ event, past, current, onOpen }: { event: CalEvent; past: boolean; current: boolean; onOpen: (id: string) => void }) {
@@ -44,6 +91,7 @@ function EventRow({ event, past, current, onOpen }: { event: CalEvent; past: boo
       <span className="ag-event__body">
         <span className="ag-event__head">
           <span className="ag-event__cat">{CATEGORY_LABEL[event.category]}</span>
+          {isRepeating(event) && <Repeat2 size={12} strokeWidth={2} aria-label="Se repite" />}
           {current && (
             <span className="live">
               <i aria-hidden="true" />
@@ -80,64 +128,125 @@ function EventRow({ event, past, current, onOpen }: { event: CalEvent; past: boo
   )
 }
 
-export function AgendaView({ days, onOpen, onSlotClick }: Props) {
+export function AgendaView({ jumpTo, onOpen, onSlotClick }: Props) {
   const { eventsByDate, now } = usePlanner()
   const nowMin = nowMinutes(now)
-  const [showPast, setShowPast] = useState(false)
-  const firstKey = iso(days[0])
-  useEffect(() => setShowPast(false), [firstKey])
+  const [from, setFrom] = useState(() => startOfDay(new Date()))
+  const [count, setCount] = useState(60)
+  const end = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLElement>(null)
+  const firstJump = useRef(true)
+  const rows = useMemo(() => buildRows(from, count, eventsByDate), [from, count, eventsByDate])
 
-  // En la semana actual, los días ya pasados quedan plegados.
-  const todayIndex = days.findIndex((day) => isToday(day))
-  const hiddenPast = !showPast && todayIndex > 0 ? todayIndex : 0
-  const visibleDays = hiddenPast ? days.slice(hiddenPast) : days
-  const total = days.reduce((sum, day) => sum + (eventsByDate.get(iso(day))?.length ?? 0), 0)
+  // Al acercarse al final se cargan más días, sin botones.
+  useEffect(() => {
+    const node = end.current
+    if (!node) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setCount((value) => value + 60)
+      },
+      { rootMargin: '600px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  const showBefore = (days: number) => {
+    setFrom((value) => addDays(value, -days))
+    setCount((value) => value + days)
+  }
+
+  // Los botones de la barra llevan la lista hasta el día pedido.
+  useEffect(() => {
+    if (firstJump.current) {
+      firstJump.current = false
+      return
+    }
+    const target = startOfDay(jumpTo)
+    if (target < from) {
+      const days = Math.ceil((from.getTime() - target.getTime()) / 86_400_000) + 7
+      showBefore(days)
+    } else {
+      const ahead = Math.ceil((target.getTime() - from.getTime()) / 86_400_000)
+      if (ahead >= count) setCount(ahead + 60)
+    }
+    const raf = requestAnimationFrame(() => {
+      const targetKey = iso(target)
+      const nodes = list.current?.querySelectorAll<HTMLElement>('[data-agenda-day]') ?? []
+      for (const node of nodes) {
+        if ((node.dataset.agendaEnd ?? node.dataset.agendaDay ?? '') >= targetKey) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          break
+        }
+      }
+    })
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo])
 
   return (
-    <section className="agenda" aria-label="Agenda">
-      {total === 0 && (
-        <div className="empty">
-          <span className="empty__mark" aria-hidden="true">
-            ✳
-          </span>
-          <p className="empty__title">Semana en blanco.</p>
-          <p className="empty__copy">Toca un día para añadir lo primero que importe.</p>
-        </div>
-      )}
-      {hiddenPast > 0 && (
-        <button
-          type="button"
-          className="ag-past"
-          onClick={() => {
-            haptic('selection')
-            setShowPast(true)
-          }}
-        >
-          <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
-          Ver {hiddenPast === 1 ? 'el día anterior' : `los ${hiddenPast} días anteriores`}
-        </button>
-      )}
-      {visibleDays.map((day, index) => {
+    <section className="agenda" aria-label="Agenda" ref={list}>
+      <button
+        type="button"
+        className="ag-past"
+        onClick={() => {
+          haptic('selection')
+          showBefore(14)
+        }}
+      >
+        <ChevronUp size={15} strokeWidth={2} aria-hidden="true" />
+        Ver días anteriores
+      </button>
+      {rows.map((row, index) => {
+        if (row.kind === 'month') {
+          return (
+            <h3 key={row.key} className="ag-month">
+              {fmtMonth(row.first).replace(/^./, (c) => c.toUpperCase())}
+            </h3>
+          )
+        }
+        if (row.kind === 'free') {
+          return (
+            <button
+              key={row.key}
+              type="button"
+              className="ag-free"
+              data-agenda-day={iso(row.from)}
+              data-agenda-end={iso(row.to)}
+              onClick={() => {
+                haptic('selection')
+                onSlotClick(row.from, 9 * 60)
+              }}
+            >
+              <span>
+                Libre · {fmtDateMedium(row.from)}
+                {iso(row.from) !== iso(row.to) && ` – ${fmtDateMedium(row.to)}`}
+              </span>
+              <Plus size={16} strokeWidth={2} aria-hidden="true" />
+            </button>
+          )
+        }
+        const { day, list: dayList } = row
         const date = iso(day)
-        const list = eventsByDate.get(date) ?? []
         const today = isToday(day)
-        const busy = list.reduce((sum, e) => sum + e.duration, 0)
-        const nextIdx = today ? list.findIndex((e) => e.start + e.duration > nowMin) : -1
+        const busy = dayList.reduce((sum, e) => sum + e.duration, 0)
+        const nextIdx = today ? dayList.findIndex((e) => e.start + e.duration > nowMin) : -1
         return (
           <m.div
-            key={date}
-            className={`ag-day ${today ? 'is-today' : ''} ${list.length === 0 ? 'is-empty' : ''}`}
+            key={row.key}
+            className={`ag-day ${today ? 'is-today' : ''} ${dayList.length === 0 ? 'is-empty' : ''}`}
+            data-agenda-day={date}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.24, delay: Math.min(index * 0.035, 0.2) }}
+            transition={{ duration: 0.24, delay: Math.min(index * 0.02, 0.2) }}
           >
             <header className="ag-day__head">
               <span className="ag-day__num">{day.getDate()}</span>
               <span className="ag-day__label">
                 <strong>{WEEKDAYS[(day.getDay() + 6) % 7]}</strong>
                 <span>
-                  {index === 0 || day.getDate() === 1 ? `${MONTHS[day.getMonth()]} · ` : ''}
-                  {list.length > 0 ? `${list.length} ${list.length === 1 ? 'evento' : 'eventos'} · ${fmtDuration(busy)}` : 'libre'}
+                  {dayList.length > 0 ? `${dayList.length} ${dayList.length === 1 ? 'evento' : 'eventos'} · ${fmtDuration(busy)}` : 'libre'}
                 </span>
               </span>
               {today && <span className="ag-day__today">Hoy</span>}
@@ -154,9 +263,9 @@ export function AgendaView({ days, onOpen, onSlotClick }: Props) {
               </button>
             </header>
 
-            {list.length === 0 ? null : (
+            {dayList.length === 0 ? null : (
               <div className="ag-day__list">
-                {list.map((event, i) => {
+                {dayList.map((event, i) => {
                   const past = today && event.start + event.duration <= nowMin
                   const current = today && event.start <= nowMin && event.start + event.duration > nowMin
                   return (
@@ -175,6 +284,7 @@ export function AgendaView({ days, onOpen, onSlotClick }: Props) {
           </m.div>
         )
       })}
+      <div ref={end} aria-hidden="true" />
     </section>
   )
 }
